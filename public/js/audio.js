@@ -58,6 +58,14 @@ export class AudioEngine {
 
     // Microphone capture (best-effort).
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        const secure = location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1";
+        throw new Error(
+          secure
+            ? "this browser does not support microphone access"
+            : "microphone access requires a secure context (use https:// or localhost)",
+        );
+      }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,

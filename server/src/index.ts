@@ -1,5 +1,7 @@
-import { createServer } from "node:http";
+import { createServer as createHttpServer, type IncomingMessage, type ServerResponse } from "node:http";
+import { createServer as createHttpsServer } from "node:https";
 import { readFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
@@ -8,6 +10,8 @@ import { MIC_FRAME } from "./protocol.js";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 const HOST = process.env["HOST"] ?? "0.0.0.0";
+const SSL_CERT = process.env["SSL_CERT"];
+const SSL_KEY = process.env["SSL_KEY"];
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = normalize(join(__dirname, "..", "..", "public"));
@@ -43,7 +47,7 @@ async function serveStatic(url: string): Promise<{ status: number; body: Buffer;
   }
 }
 
-const server = createServer(async (req, res) => {
+async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
   const served = await serveStatic(req.url ?? "/");
   if (served) {
     res.writeHead(served.status, { "Content-Type": served.type });
@@ -52,7 +56,12 @@ const server = createServer(async (req, res) => {
   }
   res.writeHead(404, { "Content-Type": "text/plain; charset=utf-8" });
   res.end("Not found");
-});
+}
+
+const server =
+  SSL_CERT && SSL_KEY
+    ? createHttpsServer({ cert: readFileSync(SSL_CERT), key: readFileSync(SSL_KEY) }, handler)
+    : createHttpServer(handler);
 
 const wss = new WebSocketServer({ noServer: true });
 
@@ -87,5 +96,6 @@ wss.on("connection", (ws: WebSocket) => {
 });
 
 server.listen(PORT, HOST, () => {
-  console.log(`TeamSpeak Web bridge listening on http://${HOST}:${PORT}`);
+  const scheme = SSL_CERT && SSL_KEY ? "https" : "http";
+  console.log(`TeamSpeak Web bridge listening on ${scheme}://${HOST}:${PORT}`);
 });

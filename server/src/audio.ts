@@ -24,8 +24,18 @@ export class OpusCodec {
     if (this.#encoder) return true;
     if (!this.#loading) {
       this.#loading = (async () => {
-        const mod = (await import("@discordjs/opus")) as { OpusEncoder: OpusEncoderCtor };
-        this.#encoder = new mod.OpusEncoder(SAMPLE_RATE, CHANNELS);
+        // @discordjs/opus is CommonJS. Depending on the loader (tsx/esbuild,
+        // plain Node, bundled ESM) the constructor may show up as a named
+        // export, as `default`, or as `default.OpusEncoder`.
+        const imported = (await import("@discordjs/opus")) as {
+          OpusEncoder?: OpusEncoderCtor;
+          default?: OpusEncoderCtor | { OpusEncoder?: OpusEncoderCtor };
+        };
+        const ctor: OpusEncoderCtor | undefined =
+          imported.OpusEncoder ??
+          (typeof imported.default === "function" ? imported.default : imported.default?.OpusEncoder);
+        if (!ctor) throw new Error("unable to resolve OpusEncoder export");
+        this.#encoder = new ctor(SAMPLE_RATE, CHANNELS);
       })();
     }
     try {

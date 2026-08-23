@@ -69,10 +69,30 @@ keep the same UID between sessions.
 
 ## Configuration
 
-| Env var  | Default   | Description                          |
-| -------- | --------- | ------------------------------------ |
-| `PORT`   | `3000`    | HTTP/WebSocket listen port           |
-| `HOST`   | `0.0.0.0` | Bind address                         |
+| Env var    | Default   | Description                                            |
+| ---------- | --------- | ------------------------------------------------------ |
+| `PORT`     | `3000`    | HTTP/WebSocket listen port                             |
+| `HOST`     | `0.0.0.0` | Bind address                                           |
+| `SSL_CERT` | —         | Path to a TLS certificate (enables HTTPS when set)     |
+| `SSL_KEY`  | —         | Path to the TLS private key (enables HTTPS when set)   |
+
+### Microphone on your LAN
+
+Browsers only allow microphone access from a **secure context** — `https://`
+or `localhost`. If you access the bridge from another device via a plain
+`http://192.168.x.x:3000` URL, you will still hear others but the mic stays
+unavailable. Serve over HTTPS instead:
+
+```bash
+# generate a self-signed certificate (answer the prompts)
+openssl req -x509 -nodes -newkey rsa:2048 -days 365 \
+  -keyout key.pem -out cert.pem
+
+SSL_CERT=cert.pem SSL_KEY=key.pem npm start
+```
+
+Then open `https://<your-host>:3000` and accept the self-signed warning. (Use
+`mkcert` for a locally-trusted certificate instead of a raw self-signed one.)
 
 ## Project layout
 

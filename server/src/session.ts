@@ -235,6 +235,9 @@ export class Session {
       const codec = new OpusCodec();
       const ok = await codec.ensureLoaded();
       this.#codec = ok ? codec : null;
+      if (!ok) {
+        console.warn("[voice] Opus codec failed to load — voice is disabled. Run `npm rebuild @discordjs/opus`.");
+      }
     }
   }
 
