@@ -176,13 +176,16 @@ let audioInited = false;
 async function initAudio() {
   if (audioInited) return;
   audioInited = true;
-  try {
-    await audio.init();
-    audio.setOnMicFrame(sendMicFrame);
+  await audio.init();
+  audio.setOnMicFrame(sendMicFrame);
+  if (audio.micAvailable) {
     audio.micEnabled = true;
     el.micBtn.classList.add("active");
-  } catch (err) {
-    addChatLine({ system: `Microphone unavailable: ${err.message}` });
+  } else {
+    addChatLine({
+      system: `Microphone unavailable (you can still hear others): ${audio.micError?.message ?? "permission denied"}`,
+    });
+    el.micBtn.classList.remove("active");
   }
 }
 
@@ -256,9 +259,10 @@ function renderServerInfo() {
 }
 
 function buildChannelTree() {
-  const ids = new Set(state.channels.map((c) => c.id));
+  const channels = state.channels.filter((c) => c.id !== "0" && c.name !== "");
+  const ids = new Set(channels.map((c) => c.id));
   const byParent = new Map();
-  for (const ch of state.channels) {
+  for (const ch of channels) {
     const parent = ch.parentID !== "0" && !ids.has(ch.parentID) ? "0" : ch.parentID;
     const list = byParent.get(parent) || [];
     list.push(ch);
@@ -270,12 +274,16 @@ function buildChannelTree() {
     clientCounts.set(c.cid, (clientCounts.get(c.cid) || 0) + 1);
   }
 
+  const visited = new Set();
   const renderLevel = (parentID) => {
+    if (visited.has(parentID)) return null;
+    visited.add(parentID);
     const list = byParent.get(parentID) || [];
     list.sort((a, b) => a.name.localeCompare(b.name));
-    if (list.length === 0) return "";
+    if (list.length === 0) return null;
     const ul = document.createElement("ul");
     for (const ch of list) {
+      if (ch.id === parentID) continue;
       const li = document.createElement("li");
       const item = document.createElement("div");
       item.className = "channel-item";
@@ -283,14 +291,16 @@ function buildChannelTree() {
       item.innerHTML = `<span class="icon">#</span><span>${escapeHtml(ch.name)}</span><span class="count">${clientCounts.get(ch.id) || 0}</span>`;
       item.addEventListener("click", () => selectChannel(ch.id));
       li.appendChild(item);
-      li.appendChild(renderLevel(ch.id));
+      const children = renderLevel(ch.id);
+      if (children) li.appendChild(children);
       ul.appendChild(li);
     }
     return ul;
   };
 
   el.channelTree.innerHTML = "";
-  el.channelTree.appendChild(renderLevel("0"));
+  const root = renderLevel("0");
+  if (root) el.channelTree.appendChild(root);
 }
 
 function renderChannels() {
