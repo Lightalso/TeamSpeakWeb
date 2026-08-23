@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TeamSpeak Web</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- Connect screen -->
+    <section id="connect-screen" class="screen">
+      <div class="card connect-card">
+        <h1>TeamSpeak Web</h1>
+        <p class="muted">Connect to a TeamSpeak 3/5/6 server from your browser.</p>
+        <form id="connect-form">
+          <label>
+            Server address
+            <input id="f-addr" type="text" placeholder="ts.example.com:9987" required />
+          </label>
+          <label>
+            Nickname
+            <input id="f-nickname" type="text" placeholder="Guest" required maxlength="30" />
+          </label>
+          <label>
+            Server password <span class="muted">(optional)</span>
+            <input id="f-password" type="password" placeholder="" />
+          </label>
+          <label>
+            Default channel <span class="muted">(optional)</span>
+            <input id="f-channel" type="text" placeholder="Lobby" />
+          </label>
+          <label>
+            Channel password <span class="muted">(optional)</span>
+            <input id="f-channelpw" type="password" placeholder="" />
+          </label>
+          <button type="submit" id="connect-btn" class="btn-primary">Connect</button>
+          <p id="connect-error" class="error hidden"></p>
+        </form>
+        <p class="muted small">
+          A fresh identity is generated for this browser automatically. Voice requires microphone permission.
+        </p>
+      </div>
+    </section>
+
+    <!-- Main client view -->
+    <section id="main-screen" class="screen hidden">
+      <nav class="navbar">
+        <div class="brand">TeamSpeak Web</div>
+        <div class="server-status" id="server-status">
+          <span id="server-name">—</span>
+          <span class="badge" id="server-counts">0 / 0 online</span>
+        </div>
+        <div class="self-info" id="self-info">Not connected</div>
+        <button id="disconnect-btn" class="btn">Disconnect</button>
+      </nav>
+
+      <div class="layout">
+        <aside class="panel channels-panel">
+          <h2>Channels</h2>
+          <div id="channel-tree" class="channel-tree"></div>
+        </aside>
+
+        <main class="panel clients-panel">
+          <div class="panel-header">
+            <h2 id="selected-channel-title">Clients</h2>
+            <button id="join-btn" class="btn" disabled>Join channel</button>
+          </div>
+          <div id="client-list" class="client-list"></div>
+        </main>
+
+        <aside class="panel chat-panel">
+          <h2>Chat</h2>
+          <div id="chat-log" class="chat-log"></div>
+          <form id="chat-form" class="chat-form">
+            <input id="chat-input" type="text" placeholder="Message channel…" autocomplete="off" />
+            <button type="submit" class="btn">Send</button>
+          </form>
+        </aside>
+      </div>
+
+      <div class="voice-bar">
+        <button id="mic-btn" class="btn-voice" title="Toggle microphone">🎤 Mic</button>
+        <label class="ptt-toggle" title="Push-to-talk">
+          <input type="checkbox" id="ptt-toggle" /> PTT
+        </label>
+        <button id="ptt-btn" class="btn-voice" title="Hold to talk">Push to talk</button>
+        <div class="meter">
+          <span class="meter-label">Mic</span>
+          <div class="meter-track"><div id="mic-meter" class="meter-fill"></div></div>
+        </div>
+        <div class="meter">
+          <span class="meter-label">Out</span>
+          <div class="meter-track"><div id="out-meter" class="meter-fill"></div></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
