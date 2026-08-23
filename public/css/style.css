@@ -263,3 +263,63 @@ input[type="text"]:focus, input[type="password"]:focus {
 
 ::-webkit-scrollbar { width: 8px; }
 ::-webkit-scrollbar-thumb { background: var(--site-scrollbar); border-radius: 4px; }
+
+/* ---- Mobile tab bar (hidden on desktop) ---- */
+.mobile-tabs {
+  display: none;
+}
+
+/* ---- Responsive layout ---- */
+@media (max-width: 768px) {
+  .navbar {
+    flex-wrap: wrap;
+    gap: 0.4rem 0.75rem;
+    padding: 0.5rem 0.75rem;
+  }
+  .brand { font-size: 0.95rem; }
+  .server-status { flex-basis: 100%; order: 3; }
+  .self-info { display: none; }
+
+  .mobile-tabs {
+    display: flex;
+    background: var(--navbar);
+    border-bottom: 1px solid var(--navbar-border);
+  }
+  .mobile-tab {
+    flex: 1;
+    padding: 0.65rem 0.5rem;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--site-text);
+    font-family: var(--font);
+    font-size: 0.9rem;
+    cursor: pointer;
+  }
+  .mobile-tab.active {
+    color: #fff;
+    border-bottom-color: var(--site-secondary);
+  }
+
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .panel { display: none; }
+  .panel.active { display: flex; }
+
+  .voice-bar {
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+  }
+  .btn-voice {
+    padding: 0.6rem 1rem;
+    font-size: 0.95rem;
+  }
+  #ptt-btn { flex: 1; }
+  .meter { flex: 1; }
+  .meter-track { width: auto; flex: 1; }
+
+  .connect-card { padding: 1.5rem; }
+}
+

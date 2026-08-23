@@ -380,6 +380,17 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 }
 
+// ---- Mobile tab switching ----------------------------------------------------
+
+function switchMobileTab(panelId) {
+  document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.classList.contains(panelId)));
+  document.querySelectorAll(".mobile-tab").forEach((t) => t.classList.toggle("active", t.dataset.panel === panelId));
+}
+
+document.querySelectorAll(".mobile-tab").forEach((tab) => {
+  tab.addEventListener("click", () => switchMobileTab(tab.dataset.panel));
+});
+
 // ---- Events ------------------------------------------------------------------
 
 el.form.addEventListener("submit", (e) => {
@@ -409,7 +420,6 @@ el.chatForm.addEventListener("submit", (e) => {
   const text = el.chatInput.value.trim();
   if (!text) return;
   send({ type: "chat", targetMode: 2, target: state.cid, message: text });
-  addChatLine({ who: state.nickname, where: "[you]", text });
   el.chatInput.value = "";
 });
 

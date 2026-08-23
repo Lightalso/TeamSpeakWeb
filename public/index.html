@@ -56,8 +56,14 @@
         <button id="disconnect-btn" class="btn">Disconnect</button>
       </nav>
 
+      <div class="mobile-tabs" id="mobile-tabs">
+        <button class="mobile-tab active" data-panel="channels-panel" type="button">Channels</button>
+        <button class="mobile-tab" data-panel="clients-panel" type="button">Clients</button>
+        <button class="mobile-tab" data-panel="chat-panel" type="button">Chat</button>
+      </div>
+
       <div class="layout">
-        <aside class="panel channels-panel">
+        <aside class="panel channels-panel active">
           <h2>Channels</h2>
           <div id="channel-tree" class="channel-tree"></div>
         </aside>
