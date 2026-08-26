@@ -1,4 +1,5 @@
-import { AudioEngine, clamp } from "./audio.js";
+import { AudioEngine } from "./audio.js";
+import { BrowserOpusCodec } from "./opus.js";
 
 const THEME_STORAGE_KEY = "tsweb_theme";
 const THEME_MODES = ["auto", "light", "dark"];
@@ -53,6 +54,22 @@ const state = {
 };
 
 const audio = new AudioEngine();
+let voiceCodecErrorShown = false;
+const voiceCodec = new BrowserOpusCodec({
+  onEncoded: (packet) => sendOpusFrame(packet),
+  onDecoded: (streamId, pcm) => audio.play(streamId, pcm),
+  onError: (error) => {
+    console.error("Browser Opus error:", error);
+    if (!voiceCodecErrorShown) {
+      voiceCodecErrorShown = true;
+      addChatLine({ system: `Voice codec error: ${error.message}` });
+    }
+  },
+});
+const voiceCodecReady = voiceCodec.init().catch((error) => {
+  console.error("Unable to initialize browser Opus:", error);
+  return false;
+});
 const CONNECT_TIMEOUT_MS = 35_000;
 let connectTimer = null;
 
@@ -102,9 +119,20 @@ applyTheme(themeMode, false);
 
 // ---- WebSocket ---------------------------------------------------------------
 
-function connect(addr, nickname, password, channel, channelpw) {
+function bridgeWebSocketUrl() {
+  const configured = new URLSearchParams(location.search).get("bridge") || window.TSWEB_BRIDGE_URL;
+  if (configured) {
+    const url = new URL(configured, location.href);
+    if (url.protocol === "http:") url.protocol = "ws:";
+    if (url.protocol === "https:") url.protocol = "wss:";
+    return url.toString();
+  }
   const proto = location.protocol === "https:" ? "wss" : "ws";
-  const ws = new WebSocket(`${proto}://${location.host}/ws`);
+  return `${proto}://${location.host}/ws`;
+}
+
+function connect(addr, nickname, password, channel, channelpw) {
+  const ws = new WebSocket(bridgeWebSocketUrl());
   ws.binaryType = "arraybuffer";
   state.ws = ws;
 
@@ -193,6 +221,8 @@ function handleJson(msg) {
     }
     case "clientLeave":
       state.clients = state.clients.filter((client) => client.id !== msg.id);
+      voiceCodec.removeDecoder(msg.id);
+      audio.removeStream(msg.id);
       renderClients();
       renderChannels();
       break;
@@ -226,13 +256,12 @@ function handleJson(msg) {
 
 function handleBinary(data) {
   const bytes = new Uint8Array(data);
-  if (bytes[0] === 0x02 && bytes.length > 3) {
+  if (bytes[0] === 0x04 && bytes.length > 4) {
     const clid = (bytes[1] << 8) | bytes[2];
-    const dv = new DataView(data, 3);
-    const n = (bytes.length - 3) / 2;
-    const f32 = new Float32Array(n);
-    for (let i = 0; i < n; i++) f32[i] = dv.getInt16(i * 2, true) / 0x8000;
-    audio.play(f32);
+    const packet = bytes.slice(4);
+    void voiceCodecReady.then((ready) => {
+      if (ready) voiceCodec.decode(clid, packet);
+    });
     setTalking(clid, true, true);
   }
 }
@@ -241,15 +270,11 @@ function send(msg) {
   if (state.ws && state.ws.readyState === WebSocket.OPEN) state.ws.send(JSON.stringify(msg));
 }
 
-function sendMicFrame(f32) {
+function sendOpusFrame(packet) {
   if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-  const out = new Uint8Array(1 + f32.length * 2);
-  out[0] = 0x01;
-  const dv = new DataView(out.buffer);
-  for (let i = 0; i < f32.length; i++) {
-    const s = clamp(f32[i]);
-    dv.setInt16(1 + i * 2, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-  }
+  const out = new Uint8Array(1 + packet.length);
+  out[0] = 0x03;
+  out.set(packet, 1);
   state.ws.send(out);
 }
 
@@ -259,8 +284,14 @@ let audioInited = false;
 async function initAudio() {
   if (audioInited) return;
   audioInited = true;
-  await audio.init();
-  audio.setOnMicFrame(sendMicFrame);
+  const [, codecReady] = await Promise.all([audio.init(), voiceCodecReady]);
+  if (!codecReady) {
+    audio.micEnabled = false;
+    el.micBtn.classList.remove("active");
+    addChatLine({ system: "Voice is unavailable: this browser needs WebAssembly support." });
+    return;
+  }
+  audio.setOnMicFrame((frame) => voiceCodec.encode(frame));
   if (audio.micAvailable) {
     audio.micEnabled = true;
     el.micBtn.classList.add("active");
@@ -322,6 +353,8 @@ function onDisconnected() {
   state.connected = false;
   state.clients = [];
   state.channels = [];
+  voiceCodec.resetDecoders();
+  audio.resetPlayback();
   el.mainScreen.classList.add("hidden");
   el.connectScreen.classList.remove("hidden");
   el.connectBtn.disabled = false;
@@ -348,7 +381,7 @@ function finishConnecting() {
   if (connectTimer) clearTimeout(connectTimer);
   connectTimer = null;
   el.connectBtn.disabled = false;
-  el.connectBtn.textContent = "Connect";
+  el.connectBtn.textContent = "Connect to server";
 }
 
 let refreshTimer = null;

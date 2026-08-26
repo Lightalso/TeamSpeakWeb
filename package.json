@@ -9,15 +9,19 @@
     "node": ">=20.19"
   },
   "scripts": {
+    "prepare:client": "node scripts/copy-browser-codec.mjs",
+    "predev": "npm run prepare:client",
     "dev": "tsx watch server/src/index.ts",
+    "prestart": "npm run prepare:client",
     "start": "tsx server/src/index.ts",
+    "prebuild": "npm run prepare:client",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "postinstall": "node scripts/install-opus.cjs"
+    "postinstall": "node scripts/copy-browser-codec.mjs"
   },
   "dependencies": {
-    "@discordjs/opus": "^0.10.0",
     "@honeybbq/teamspeak-client": "^0.2.3",
+    "libopus-wasm": "^0.1.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {

@@ -6,7 +6,7 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WebSocketServer, type WebSocket } from "ws";
 import { Session } from "./session.js";
-import { MIC_FRAME } from "./protocol.js";
+import { MIC_OPUS_FRAME } from "./protocol.js";
 
 const PORT = Number(process.env["PORT"] ?? 3000);
 const HOST = process.env["HOST"] ?? "0.0.0.0";
@@ -20,6 +20,7 @@ const MIME: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
   ".css": "text/css; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".mjs": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8",
   ".svg": "image/svg+xml",
   ".png": "image/png",
@@ -77,8 +78,8 @@ wss.on("connection", (ws: WebSocket) => {
   ws.on("message", (data, isBinary) => {
     if (isBinary) {
       const buf = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
-      if (buf[0] === MIC_FRAME) {
-        session.handleMicPcm(buf.subarray(1));
+      if (buf[0] === MIC_OPUS_FRAME) {
+        session.handleMicOpus(buf.subarray(1));
       }
       return;
     }

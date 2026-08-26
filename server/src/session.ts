@@ -13,24 +13,17 @@ import type { WebSocket } from "ws";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import {
-  OpusCodec,
-  FRAME_SAMPLES,
-} from "./audio.js";
-import {
   type ClientMessage,
   type ServerMessage,
   type ClientEntry,
   type ChannelEntry,
   type ServerInfo,
-  MIC_FRAME,
-  SPEAKER_FRAME,
+  SPEAKER_OPUS_FRAME,
 } from "./protocol.js";
 import { attachWelcomeCapture } from "./welcome.js";
 
-const CODEC = 5; // Opus Music (OPUS_APPLICATION_AUDIO matches @discordjs/opus)
+const CODEC = 5; // Opus Music, matching the browser WebCodecs encoder.
 const IDENTITY_LEVEL = 8;
-const FRAME_BYTES = FRAME_SAMPLES * 2;
-const TALKING_TIMEOUT_MS = 500;
 
 /**
  * Resolve a `host[:port]` address to an explicit IPv4 literal, preserving the
@@ -102,10 +95,7 @@ export function tsUnescape(s: string): string {
 export class Session {
   #ws: WebSocket;
   #client: Client | null = null;
-  #codec: OpusCodec | null = null;
   #identityStr: string | undefined;
-  #micBuf = Buffer.alloc(0);
-  #talking = new Map<number, NodeJS.Timeout>();
   #closed = false;
   #permissionWarned = false;
   #channelQueryDenied = false;
@@ -116,7 +106,6 @@ export class Session {
   #clients = new Map<number, ClientEntry>();
   #serverInfoCache: ServerInfo | null = null;
   #subscribedAll = false;
-  #voiceDecodeErrors = 0;
 
   constructor(ws: WebSocket) {
     this.#ws = ws;
@@ -127,12 +116,13 @@ export class Session {
     this.#ws.send(JSON.stringify(msg));
   }
 
-  sendSpeakerPcm(clid: number, pcm: Buffer): void {
+  sendSpeakerOpus(clid: number, codec: number, opus: Uint8Array): void {
     if (this.#closed || this.#ws.readyState !== this.#ws.OPEN) return;
-    const frame = Buffer.allocUnsafe(3 + pcm.length);
-    frame[0] = SPEAKER_FRAME;
+    const frame = Buffer.allocUnsafe(4 + opus.length);
+    frame[0] = SPEAKER_OPUS_FRAME;
     frame.writeUInt16BE(clid & 0xffff, 1);
-    pcm.copy(frame, 3);
+    frame[3] = codec & 0xff;
+    Buffer.from(opus).copy(frame, 4);
     this.#ws.send(frame, { binary: true });
   }
 
@@ -169,23 +159,12 @@ export class Session {
     }
   }
 
-  handleMicPcm(pcm: Buffer): void {
-    if (!this.#client) return;
-    this.#micBuf = Buffer.concat([this.#micBuf, pcm]);
-    while (this.#micBuf.length >= FRAME_BYTES) {
-      const frame = this.#micBuf.subarray(0, FRAME_BYTES);
-      this.#micBuf = this.#micBuf.subarray(FRAME_BYTES);
-      this.#sendVoiceFrame(frame);
-    }
-  }
-
-  #sendVoiceFrame(pcm: Buffer): void {
-    if (!this.#client || !this.#codec?.loaded) return;
+  handleMicOpus(opus: Buffer): void {
+    if (!this.#client || opus.length <= 1 || opus.length > 4_000) return;
     try {
-      const opus = this.#codec.encode(pcm);
       this.#client.sendVoice(opus, CODEC);
     } catch {
-      // Ignore encode errors on closed sockets.
+      // Ignore packets racing with a closed TeamSpeak socket.
     }
   }
 
@@ -200,7 +179,6 @@ export class Session {
     this.#clients.clear();
     this.#serverInfoCache = null;
     this.#subscribedAll = false;
-    this.#voiceDecodeErrors = 0;
 
     let identity;
     if (msg.identity) {
@@ -329,7 +307,7 @@ export class Session {
         const entry: ClientEntry = {
           ...captured,
           isSelf: captured.id === client.clientID(),
-          talking: this.#talking.has(captured.id),
+          talking: false,
         };
         this.#clients.set(entry.id, entry);
         this.send({ type: "clientEnter", client: entry });
@@ -350,33 +328,14 @@ export class Session {
       throw new Error(`connection failed: ${(err as Error).message}`);
     }
 
-    // Load the Opus codec now so voice is ready as soon as the user speaks.
-    if (!this.#codec) {
-      const codec = new OpusCodec();
-      const ok = await codec.ensureLoaded();
-      this.#codec = ok ? codec : null;
-      if (!ok) {
-        console.warn("[voice] Opus codec failed to load — voice is disabled. Run `npm rebuild @discordjs/opus`.");
-      }
-    }
   }
 
   #handleVoiceData(clientId: number, codec: number, data: Uint8Array): void {
     // Only Opus voice (4) and Opus music (5) are supported.
     if (codec !== 4 && codec !== 5) return;
-    if (!this.#codec?.loaded) return;
     // One-byte packets are TS voice-stream terminators/DTX markers, not Opus.
     if (data.length <= 1) return;
-    try {
-      const pcm = this.#codec.decode(Buffer.from(data), clientId);
-      this.sendSpeakerPcm(clientId, pcm);
-    } catch (err) {
-      if (this.#voiceDecodeErrors++ < 3) {
-        console.warn(`[voice] failed to decode client ${clientId}:`, (err as Error).message);
-      }
-      return;
-    }
-    this.#markTalking(clientId);
+    this.sendSpeakerOpus(clientId, codec, data);
   }
 
   async #subscribeAllChannels(client: Client): Promise<void> {
@@ -388,20 +347,6 @@ export class Session {
       this.#subscribedAll = false;
       console.warn("[ts] unable to subscribe to all channels:", (err as Error).message);
     }
-  }
-
-  #markTalking(clientId: number): void {
-    const existing = this.#talking.get(clientId);
-    if (existing) {
-      existing.refresh();
-      return;
-    }
-    this.send({ type: "clientTalking", clid: clientId, talking: true });
-    const t = setTimeout(() => {
-      this.#talking.delete(clientId);
-      this.send({ type: "clientTalking", clid: clientId, talking: false });
-    }, TALKING_TIMEOUT_MS);
-    this.#talking.set(clientId, t);
   }
 
   async #refresh(): Promise<void> {
@@ -521,7 +466,7 @@ export class Session {
       type: info.type,
       serverGroups: info.serverGroups,
       isSelf: info.id === selfId,
-      talking: this.#talking.has(info.id),
+      talking: false,
     };
   }
 
@@ -535,9 +480,6 @@ export class Session {
         // best-effort
       }
     }
-    for (const t of this.#talking.values()) clearTimeout(t);
-    this.#talking.clear();
-    this.#micBuf = Buffer.alloc(0);
   }
 
   close(): void {

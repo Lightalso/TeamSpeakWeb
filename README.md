@@ -5,31 +5,32 @@ channels, see who is online, text-chat, and voice-chat — all from a web page.
 
 ## How it works
 
-Browsers cannot speak the TeamSpeak UDP protocol or encode Opus natively, so the
-project is split into two parts that communicate over a WebSocket:
+Browsers cannot open a raw TeamSpeak UDP socket, so the project uses a thin UDP
+gateway. Opus encoding, decoding, buffering and mixing run in the browser:
 
 ```
-┌─────────────┐   WebSocket (JSON control + PCM voice)   ┌──────────────────────┐
-│   Browser   │ ────────────────────────────────────────▶│   Node.js bridge     │
-│  (frontend) │ ◀────────────────────────────────────────│  (this server)       │
-└─────────────┘                                          │  • teamspeak-client  │
-   mic → PCM frames      Opus-decoded → PCM frames       │  • @discordjs/opus   │
-   PCM → WebAudio        (played back in browser)        └──────────┬───────────┘
-                                                                    │ TS3 UDP protocol
-                                                                    ▼
-                                                          TeamSpeak server (v3/5/6)
+┌──────────────────────────┐   WebSocket (control + Opus)   ┌──────────────────┐
+│ Browser                  │ ──────────────────────────────▶│ Thin Node gateway│
+│ • WebAssembly Opus       │ ◀──────────────────────────────│ • TS protocol    │
+│ • AudioWorklet capture   │                                │ • UDP transport  │
+│ • jitter buffer + mixer  │                                └────────┬─────────┘
+└──────────────────────────┘                                         │ UDP
+                                                                     ▼
+                                                        TeamSpeak server (v3/5/6)
 ```
 
 - **`@honeybbq/teamspeak-client`** (the `teamspeak-js` reference repo) implements
   the TeamSpeak client protocol (handshake, crypto, commands, voice packets).
-- **`@discordjs/opus`** (the `opus` reference repo) encodes/decodes Opus audio on
-  the server, so the browser only needs to ship raw 48 kHz PCM.
+- The browser uses precompiled **libopus WebAssembly** for Opus and uses
+  **AudioWorklet** when available for low-jitter capture/playback. The gateway
+  forwards compressed packets without decoding.
 - The frontend's look and status layout are inspired by the **ts-website**
   reference repo.
 
 ## Requirements
 
 - **Node.js 20.19+** (tested on 22.x)
+- A current browser with WebAssembly and Web Audio support
 - A TeamSpeak server (3.x, 5.x, or 6.x) reachable over UDP port 9987
 
 ## Install
@@ -38,12 +39,6 @@ project is split into two parts that communicate over a WebSocket:
 npm install
 ```
 
-> **Note on `@discordjs/opus`:** it ships prebuilt binaries keyed by exact libc
-> version. On systems with a newer glibc than any published prebuild, the
-> `postinstall` script (`scripts/install-opus.cjs`) downloads the closest
-> compatible prebuild automatically. If that fails, install build tools
-> (`build-essential`, `python3`) and run `npm rebuild @discordjs/opus`.
-
 ## Run
 
 ```bash
@@ -51,6 +46,10 @@ npm start          # or: npm run dev (auto-reload)
 ```
 
 Open <http://localhost:3000>. Change the port with `PORT=8080 npm start`.
+
+The frontend may also be hosted as static files. Point it at a separate gateway
+with `?bridge=wss://gateway.example.com/ws`, or set `window.TSWEB_BRIDGE_URL`
+before `main.js` loads.
 
 ## Usage
 
@@ -121,21 +120,18 @@ grant the connecting group `b_virtualserver_channel_list`,
 server/src/
   index.ts      HTTP server + WebSocket wiring + static file serving
   session.ts    one TeamSpeak client instance per browser session
-  audio.ts      Opus encode/decode (lazy-loaded @discordjs/opus)
   protocol.ts   WebSocket message contracts
   welcome.ts    standard welcome-sequence channel/server data capture
-public/         the browser frontend (vanilla JS, no build step)
-scripts/        postinstall helper for the Opus native binary
+public/         browser UI, WebAssembly Opus and AudioWorklet audio pipeline
 参考仓库/        reference source material (gitignored)
 ```
 
 ## Limitations
 
-- Only **Opus** voice codecs (TS codec 4/5) are decoded; legacy Speex/CELT is
-  ignored.
+- Only **Opus** voice codecs (TS codec 4/5) are decoded; legacy Speex/CELT is ignored.
+- Voice requires browser WebAssembly and Web Audio support.
 - Voice requires microphone access from a secure context (`https` or
   `localhost`).
-- `@discordjs/opus` is a native module; see the install note above.
 
 ## License
 

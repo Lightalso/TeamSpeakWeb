@@ -71,8 +71,8 @@ export type ServerMessage =
 
 // ---- Binary voice frames ----------------------------------------------------
 //
-// Client -> Server: [0x01][Int16 LE PCM mono 48kHz ...]  (one 20ms frame)
-// Server -> Client: [0x02][clid:uint16 BE][Int16 LE PCM mono 48kHz ...]
+// Client -> Server: [0x03][raw Opus packet]
+// Server -> Client: [0x04][clid:uint16 BE][codec:uint8][raw Opus packet]
 
-export const MIC_FRAME = 0x01;
-export const SPEAKER_FRAME = 0x02;
+export const MIC_OPUS_FRAME = 0x03;
+export const SPEAKER_OPUS_FRAME = 0x04;
