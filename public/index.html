@@ -19,6 +19,13 @@
         : mode;
       document.documentElement.dataset.themeMode = mode;
       document.documentElement.dataset.theme = effective;
+      let language = "en";
+      try {
+        const savedLanguage = localStorage.getItem("tsweb_language");
+        if (["en", "zh"].includes(savedLanguage)) language = savedLanguage;
+      } catch (_) {}
+      document.documentElement.dataset.language = language;
+      document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
     })();
   </script>
   <link rel="stylesheet" href="/css/style.css" />
@@ -30,46 +37,49 @@
       <div class="card connect-card">
         <div class="connect-header">
           <div class="brand-lockup">
-            <span class="brand-mark" aria-hidden="true">TS</span>
-            <div><h1>TeamSpeak Web</h1><span class="brand-caption">Browser voice client</span></div>
+            <div><h1>TeamSpeak Web</h1><span class="brand-caption" data-i18n="brand.caption">Browser voice client</span></div>
           </div>
-          <button class="theme-toggle" type="button" data-theme-toggle>
-            <span class="theme-icon" data-theme-icon aria-hidden="true">◐</span>
-            <span data-theme-label>Auto</span>
-          </button>
+          <div class="header-actions">
+            <button class="language-toggle" type="button" data-language-toggle><span data-language-label>中文</span></button>
+            <button class="theme-toggle" type="button" data-theme-toggle>
+              <span class="theme-icon" data-theme-icon aria-hidden="true">◐</span>
+              <span data-theme-label>Auto</span>
+            </button>
+          </div>
         </div>
         <div class="connect-intro">
-          <span class="eyebrow">Secure connection</span>
-          <p class="muted">Connect to a TeamSpeak 3/5/6 server directly from this browser.</p>
+          <h2 data-i18n="connect.title">Connect to server</h2>
+          <p class="muted" data-i18n="connect.description">Enter the server details to start a voice session.</p>
         </div>
         <form id="connect-form">
           <label class="field-wide">
-            Server address
-            <input id="f-addr" type="text" placeholder="ts.example.com:9987" required />
+            <span data-i18n="connect.address">Server address</span>
+            <input id="f-addr" type="text" placeholder="ts.example.com:9987" data-i18n-placeholder="connect.address_placeholder" required />
           </label>
           <label>
-            Nickname
-            <input id="f-nickname" type="text" placeholder="Guest" maxlength="30" />
+            <span data-i18n="connect.nickname">Nickname</span>
+            <input id="f-nickname" type="text" placeholder="Guest" data-i18n-placeholder="connect.nickname_placeholder" maxlength="30" />
           </label>
           <label>
-            Server password <span class="muted">(optional)</span>
+            <span><span data-i18n="connect.server_password">Server password</span> <span class="muted" data-i18n="common.optional">(optional)</span></span>
             <input id="f-password" type="password" placeholder="" />
           </label>
           <label>
-            Default channel <span class="muted">(optional)</span>
-            <input id="f-channel" type="text" placeholder="Lobby" />
+            <span><span data-i18n="connect.default_channel">Default channel</span> <span class="muted" data-i18n="common.optional">(optional)</span></span>
+            <input id="f-channel" type="text" placeholder="Lobby" data-i18n-placeholder="connect.channel_placeholder" />
           </label>
           <label>
-            Channel password <span class="muted">(optional)</span>
+            <span><span data-i18n="connect.channel_password">Channel password</span> <span class="muted" data-i18n="common.optional">(optional)</span></span>
             <input id="f-channelpw" type="password" placeholder="" />
           </label>
           <div class="connect-actions field-wide">
-            <button type="submit" id="connect-btn" class="btn-primary">Connect to server</button>
+            <button type="submit" id="connect-btn" class="btn-primary" data-i18n="connect.button">Connect</button>
             <p id="connect-error" class="error hidden" role="alert"></p>
           </div>
         </form>
         <p class="identity-note muted small">
-          <span aria-hidden="true">◆</span> This browser remembers all connection fields, including passwords. <span id="identity-status"></span> Voice requires microphone permission.
+          <span data-i18n="connect.storage_note">Connection details, including passwords, are stored in this browser.</span>
+          <span id="identity-status"></span>
         </p>
       </div>
     </section>
@@ -78,71 +88,70 @@
     <section id="main-screen" class="screen hidden">
       <nav class="navbar">
         <div class="nav-primary">
-          <span class="brand-mark brand-mark-small" aria-hidden="true">TS</span>
           <div class="server-status" id="server-status">
             <span class="brand">TeamSpeak Web</span>
             <span class="server-line"><i class="status-dot" aria-hidden="true"></i><span id="server-name">—</span></span>
           </div>
         </div>
         <div class="nav-actions">
-          <div class="self-info" id="self-info">Not connected</div>
-          <span class="badge" id="server-counts">0 / 0 online</span>
+          <div class="self-info" id="self-info" data-i18n="status.not_connected">Not connected</div>
+          <button class="language-toggle compact" type="button" data-language-toggle><span data-language-label>中文</span></button>
           <button class="theme-toggle compact" type="button" data-theme-toggle>
             <span class="theme-icon" data-theme-icon aria-hidden="true">◐</span>
             <span data-theme-label>Auto</span>
           </button>
-          <button id="disconnect-btn" class="btn danger">Disconnect</button>
+          <button id="disconnect-btn" class="btn danger" data-i18n="action.disconnect">Disconnect</button>
         </div>
       </nav>
 
       <div class="mobile-tabs" id="mobile-tabs">
-        <button class="mobile-tab active" data-panel="channels-panel" type="button">Channels</button>
-        <button class="mobile-tab" data-panel="clients-panel" type="button">Clients</button>
-        <button class="mobile-tab" data-panel="chat-panel" type="button">Chat</button>
+        <button class="mobile-tab active" data-panel="channels-panel" type="button" data-i18n="nav.channels">Channels</button>
+        <button class="mobile-tab" data-panel="clients-panel" type="button" data-i18n="nav.clients">Clients</button>
+        <button class="mobile-tab" data-panel="chat-panel" type="button" data-i18n="nav.chat">Chat</button>
       </div>
 
       <div class="layout">
         <aside class="panel channels-panel active">
-          <div class="panel-heading"><span class="eyebrow">Server</span><h2>Channels</h2></div>
+          <div class="panel-heading"><h2 data-i18n="nav.channels">Channels</h2></div>
           <div id="channel-tree" class="channel-tree"></div>
         </aside>
 
         <main class="panel clients-panel">
           <div class="panel-header">
-            <div class="panel-heading"><span class="eyebrow">Now viewing</span><h2 id="selected-channel-title">Clients</h2></div>
-            <button id="join-btn" class="btn" disabled>Join channel</button>
+            <div class="panel-heading"><h2 id="selected-channel-title" data-i18n="nav.clients">Clients</h2></div>
+            <button id="join-btn" class="btn" disabled data-i18n="action.join">Join</button>
           </div>
           <div id="client-list" class="client-list"></div>
         </main>
 
         <aside class="panel chat-panel">
-          <div class="panel-heading"><span class="eyebrow">Channel messages</span><h2>Chat</h2></div>
+          <div class="panel-heading"><h2 data-i18n="nav.chat">Chat</h2></div>
           <div id="chat-log" class="chat-log"></div>
           <form id="chat-form" class="chat-form">
-            <input id="chat-input" type="text" placeholder="Message channel…" autocomplete="off" />
-            <button type="submit" class="btn">Send</button>
+            <input id="chat-input" type="text" placeholder="Message channel…" data-i18n-placeholder="chat.placeholder" autocomplete="off" />
+            <button type="submit" class="btn" data-i18n="chat.send">Send</button>
           </form>
         </aside>
       </div>
 
       <div class="voice-bar">
         <div class="voice-controls">
-          <button id="mic-btn" class="btn-voice mic-mode-button" type="button" aria-live="polite">🎤 Mic on</button>
+          <button id="mic-btn" class="btn-voice mic-mode-button" type="button" aria-live="polite">Mic on</button>
         </div>
         <div class="meter-group">
           <label class="meter volume-control" for="mic-volume">
-            <span class="meter-label">Mic</span>
+            <span class="meter-label" data-i18n="audio.mic_short">Mic</span>
             <span class="volume-slider">
               <span class="meter-track" aria-hidden="true"><span id="mic-meter" class="meter-fill"></span></span>
-              <input id="mic-volume" type="range" min="0" max="200" step="5" value="100" aria-label="Microphone volume" />
+              <input id="mic-volume" type="range" min="0" max="200" step="5" value="100" aria-label="Microphone volume" data-i18n-aria="audio.mic_volume" />
             </span>
             <output id="mic-volume-value" for="mic-volume">100%</output>
           </label>
           <label class="meter volume-control" for="output-volume">
-            <span class="meter-label">Out</span>
+            <span class="meter-label" data-i18n="audio.out_short">Out</span>
             <span class="volume-slider">
               <span class="meter-track" aria-hidden="true"><span id="out-meter" class="meter-fill"></span></span>
-              <input id="output-volume" type="range" min="0" max="200" step="5" value="100" aria-label="Master output volume" />
+              <input id="output-volume" type="range" min="0" max="200" step="5" value="100" aria-label="Master output volume" data-i18n-aria="audio.output_volume" />
             </span>
             <output id="output-volume-value" for="output-volume">100%</output>
           </label>

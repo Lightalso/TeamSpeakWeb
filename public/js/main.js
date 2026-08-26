@@ -7,7 +7,160 @@ const AUDIO_STORAGE_KEY = "tsweb_audio_preferences";
 const IDENTITY_STORAGE_KEY = "tsweb_identity";
 const LAST_CONNECTION_STORAGE_KEY = "tsweb_last_connection";
 const MIC_MODES = ["open", "ptt", "muted"];
+const LANGUAGE_STORAGE_KEY = "tsweb_language";
+const LANGUAGES = ["en", "zh"];
 const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+
+const TRANSLATIONS = {
+  en: {
+    "brand.caption": "Browser voice client",
+    "common.optional": "(optional)",
+    "connect.title": "Connect to server",
+    "connect.description": "Enter the server details to start a voice session.",
+    "connect.address": "Server address",
+    "connect.address_placeholder": "ts.example.com:9987",
+    "connect.nickname": "Nickname",
+    "connect.nickname_placeholder": "Guest",
+    "connect.server_password": "Server password",
+    "connect.default_channel": "Default channel",
+    "connect.channel_placeholder": "Lobby",
+    "connect.channel_password": "Channel password",
+    "connect.button": "Connect",
+    "connect.connecting_button": "Connecting…",
+    "connect.storage_note": "Connection details, including passwords, are stored in this browser.",
+    "identity.saved": "Saved TeamSpeak identity ready; it will be reused.",
+    "identity.new": "A private TeamSpeak identity will be created after connecting.",
+    "status.not_connected": "Not connected",
+    "nav.channels": "Channels",
+    "nav.clients": "Clients",
+    "nav.chat": "Chat",
+    "action.join": "Join",
+    "action.disconnect": "Disconnect",
+    "chat.placeholder": "Message channel…",
+    "chat.send": "Send",
+    "audio.mic_short": "Mic",
+    "audio.out_short": "Out",
+    "audio.mic_volume": "Microphone volume",
+    "audio.output_volume": "Master output volume",
+    "audio.mic_on": "Mic on",
+    "audio.mic_on_title": "Microphone on · Click for push-to-talk",
+    "audio.hold": "Hold to talk",
+    "audio.talking": "Talking",
+    "audio.ptt_title": "Push-to-talk · Hold this button to talk; click for mute",
+    "audio.muted": "Muted",
+    "audio.muted_title": "Microphone muted · Click to turn it on",
+    "audio.unavailable": "Mic unavailable",
+    "audio.unavailable_title": "Microphone is unavailable in this browser",
+    "theme.auto": "Auto",
+    "theme.light": "Light",
+    "theme.dark": "Dark",
+    "theme.currently": "currently {theme}",
+    "theme.title": "Theme: {theme}{detail}",
+    "theme.switch": "Click to switch",
+    "language.switch": "切换到中文",
+    "message.bridge_closed": "Connection closed before TeamSpeak login completed.",
+    "message.bridge_failed": "Cannot connect to the local WebSocket bridge.",
+    "message.connected": "Connected to server as {nickname}",
+    "message.disconnected": "Disconnected{reason}",
+    "message.error": "Error: {message}",
+    "message.poked": "Poked by {name}: {message}",
+    "message.joined": "Joined channel",
+    "message.codec_error": "Voice codec error: {message}",
+    "message.voice_unavailable": "Voice is unavailable: this browser needs WebAssembly support.",
+    "message.mic_unavailable": "Microphone unavailable (you can still hear others): {message}",
+    "message.permission_denied": "permission denied",
+    "message.connecting": "Connecting to the TeamSpeak server…",
+    "message.timeout": "TeamSpeak connection timed out after 35 seconds.",
+    "server.fallback": "TeamSpeak Server",
+    "client.you": "you",
+    "client.mute": "Mute {nickname}",
+    "client.unmute": "Unmute {nickname}",
+    "client.volume": "Volume for {nickname}",
+    "text.pm": "PM",
+    "text.server": "Server",
+    "text.channel": "channel",
+  },
+  zh: {
+    "brand.caption": "浏览器语音客户端",
+    "common.optional": "（可选）",
+    "connect.title": "连接服务器",
+    "connect.description": "填写服务器信息以开始语音会话。",
+    "connect.address": "服务器地址",
+    "connect.address_placeholder": "ts.example.com:9987",
+    "connect.nickname": "昵称",
+    "connect.nickname_placeholder": "访客",
+    "connect.server_password": "服务器密码",
+    "connect.default_channel": "默认频道",
+    "connect.channel_placeholder": "大厅",
+    "connect.channel_password": "频道密码",
+    "connect.button": "连接",
+    "connect.connecting_button": "正在连接…",
+    "connect.storage_note": "连接信息（包括密码）保存在当前浏览器中。",
+    "identity.saved": "已保存 TeamSpeak 身份，连接时将继续复用。",
+    "identity.new": "连接后将创建并保存一个专用 TeamSpeak 身份。",
+    "status.not_connected": "未连接",
+    "nav.channels": "频道",
+    "nav.clients": "客户端",
+    "nav.chat": "聊天",
+    "action.join": "加入",
+    "action.disconnect": "断开连接",
+    "chat.placeholder": "发送频道消息…",
+    "chat.send": "发送",
+    "audio.mic_short": "麦克风",
+    "audio.out_short": "输出",
+    "audio.mic_volume": "麦克风音量",
+    "audio.output_volume": "总输出音量",
+    "audio.mic_on": "麦克风开启",
+    "audio.mic_on_title": "麦克风已开启 · 点击切换为按键说话",
+    "audio.hold": "按住说话",
+    "audio.talking": "正在说话",
+    "audio.ptt_title": "按键说话 · 长按此按钮说话，点击切换为静音",
+    "audio.muted": "已静音",
+    "audio.muted_title": "麦克风已静音 · 点击开启",
+    "audio.unavailable": "麦克风不可用",
+    "audio.unavailable_title": "此浏览器无法使用麦克风",
+    "theme.auto": "自动",
+    "theme.light": "日间",
+    "theme.dark": "夜间",
+    "theme.currently": "当前为{theme}",
+    "theme.title": "主题：{theme}{detail}",
+    "theme.switch": "点击切换",
+    "language.switch": "Switch to English",
+    "message.bridge_closed": "TeamSpeak 登录完成前连接已关闭。",
+    "message.bridge_failed": "无法连接本地 WebSocket 网桥。",
+    "message.connected": "已以 {nickname} 身份连接服务器",
+    "message.disconnected": "已断开连接{reason}",
+    "message.error": "错误：{message}",
+    "message.poked": "{name} 戳了你：{message}",
+    "message.joined": "已加入频道",
+    "message.codec_error": "语音编解码器错误：{message}",
+    "message.voice_unavailable": "语音不可用：此浏览器需要支持 WebAssembly。",
+    "message.mic_unavailable": "麦克风不可用（仍可听到其他人）：{message}",
+    "message.permission_denied": "权限被拒绝",
+    "message.connecting": "正在连接 TeamSpeak 服务器…",
+    "message.timeout": "TeamSpeak 连接在 35 秒后超时。",
+    "server.fallback": "TeamSpeak 服务器",
+    "client.you": "你",
+    "client.mute": "静音 {nickname}",
+    "client.unmute": "取消静音 {nickname}",
+    "client.volume": "{nickname} 的音量",
+    "text.pm": "私聊",
+    "text.server": "服务器",
+    "text.channel": "频道",
+  },
+};
+
+let language = LANGUAGES.includes(document.documentElement.dataset.language)
+  ? document.documentElement.dataset.language
+  : "en";
+
+function t(key, variables = {}) {
+  let value = TRANSLATIONS[language]?.[key] ?? TRANSLATIONS.en[key] ?? key;
+  for (const [name, replacement] of Object.entries(variables)) {
+    value = value.replaceAll(`{${name}}`, String(replacement));
+  }
+  return value;
+}
 
 function readStoredIdentity() {
   try {
@@ -125,7 +278,11 @@ let themeMode = readThemeMode();
 function applyTheme(mode, persist = true) {
   themeMode = THEME_MODES.includes(mode) ? mode : "auto";
   const effective = themeMode === "auto" ? (systemTheme.matches ? "dark" : "light") : themeMode;
-  const definition = { auto: ["◐", "Auto"], light: ["☀", "Light"], dark: ["☾", "Dark"] }[themeMode];
+  const definition = {
+    auto: ["◐", t("theme.auto")],
+    light: ["☀", t("theme.light")],
+    dark: ["☾", t("theme.dark")],
+  }[themeMode];
 
   document.documentElement.dataset.themeMode = themeMode;
   document.documentElement.dataset.theme = effective;
@@ -133,13 +290,46 @@ function applyTheme(mode, persist = true) {
   document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
     button.querySelector("[data-theme-icon]").textContent = definition[0];
     button.querySelector("[data-theme-label]").textContent = definition[1];
-    const detail = themeMode === "auto" ? `, currently ${effective}` : "";
-    button.title = `Theme: ${definition[1]}${detail}`;
-    button.setAttribute("aria-label", `${button.title}. Click to switch.`);
+    const effectiveLabel = t(`theme.${effective}`);
+    const detail = themeMode === "auto" ? ` · ${t("theme.currently", { theme: effectiveLabel })}` : "";
+    button.title = t("theme.title", { theme: definition[1], detail });
+    button.setAttribute("aria-label", `${button.title}. ${t("theme.switch")}.`);
   });
   if (persist) {
     try { localStorage.setItem(THEME_STORAGE_KEY, themeMode); } catch (_) {}
   }
+}
+
+function applyLanguage(nextLanguage, persist = true) {
+  language = LANGUAGES.includes(nextLanguage) ? nextLanguage : "en";
+  document.documentElement.dataset.language = language;
+  document.documentElement.lang = language === "zh" ? "zh-CN" : "en";
+  document.querySelectorAll("[data-i18n]").forEach((node) => {
+    node.textContent = t(node.dataset.i18n);
+  });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((node) => {
+    node.placeholder = t(node.dataset.i18nPlaceholder);
+  });
+  document.querySelectorAll("[data-i18n-aria]").forEach((node) => {
+    node.setAttribute("aria-label", t(node.dataset.i18nAria));
+  });
+  document.querySelectorAll("[data-language-toggle]").forEach((button) => {
+    button.querySelector("[data-language-label]").textContent = language === "en" ? "中文" : "EN";
+    button.title = t("language.switch");
+    button.setAttribute("aria-label", button.title);
+  });
+  if (persist) {
+    try { localStorage.setItem(LANGUAGE_STORAGE_KEY, language); } catch (_) {}
+  }
+  applyTheme(themeMode, false);
+  updateIdentityStatus();
+  renderMicMode();
+  if (connectTimer) el.connectBtn.textContent = t("connect.connecting_button");
+  if (state.selectedCid) {
+    const selected = state.channels.find((channel) => channel.id === state.selectedCid);
+    el.selectedChannelTitle.textContent = selected?.name || t("nav.clients");
+  }
+  if (state.clients.length) renderClients();
 }
 
 const state = {
@@ -168,7 +358,7 @@ const voiceCodec = new BrowserOpusCodec({
     console.error("Browser Opus error:", error);
     if (!voiceCodecErrorShown) {
       voiceCodecErrorShown = true;
-      addChatLine({ system: `Voice codec error: ${error.message}` });
+      addChatLine({ system: t("message.codec_error", { message: error.message }) });
     }
   },
 });
@@ -192,7 +382,6 @@ const el = {
   connectBtn: $("#connect-btn"),
   connectError: $("#connect-error"),
   serverName: $("#server-name"),
-  serverCounts: $("#server-counts"),
   selfInfo: $("#self-info"),
   disconnectBtn: $("#disconnect-btn"),
   channelTree: $("#channel-tree"),
@@ -212,6 +401,10 @@ const el = {
   identityStatus: $("#identity-status"),
 };
 
+function updateIdentityStatus() {
+  el.identityStatus.textContent = t(state.identity ? "identity.saved" : "identity.new");
+}
+
 function restoreLastConnection() {
   if (lastConnection) {
     el.addr.value = lastConnection.address;
@@ -220,9 +413,7 @@ function restoreLastConnection() {
     el.channel.value = lastConnection.defaultChannel;
     el.channelpw.value = lastConnection.channelPassword;
   }
-  el.identityStatus.textContent = state.identity
-    ? "Saved TeamSpeak identity ready; it will be reused."
-    : "A private TeamSpeak identity will be created and remembered after connecting.";
+  updateIdentityStatus();
 }
 
 restoreLastConnection();
@@ -275,6 +466,10 @@ document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
   });
 });
 
+document.querySelectorAll("[data-language-toggle]").forEach((button) => {
+  button.addEventListener("click", () => applyLanguage(language === "en" ? "zh" : "en"));
+});
+
 const handleSystemThemeChange = () => {
   if (themeMode === "auto") applyTheme("auto", false);
 };
@@ -322,12 +517,12 @@ function connect(addr, nickname, password, channel, channelpw) {
 
   ws.onclose = () => {
     if (!state.connected && el.connectError.classList.contains("connecting")) {
-      showConnectError("Connection closed before TeamSpeak login completed.");
+      showConnectError(t("message.bridge_closed"));
     }
     onDisconnected();
   };
   ws.onerror = () => {
-    if (!state.connected) showConnectError("Cannot connect to the local WebSocket bridge.");
+    if (!state.connected) showConnectError(t("message.bridge_failed"));
   };
 }
 
@@ -345,7 +540,7 @@ function handleJson(msg) {
       if (msg.identity) {
         state.identity = msg.identity;
         storeIdentity(msg.identity);
-        el.identityStatus.textContent = "Saved TeamSpeak identity ready; it will be reused.";
+        updateIdentityStatus();
       }
       saveLastConnection({
         address: el.addr.value,
@@ -358,15 +553,15 @@ function handleJson(msg) {
       });
       state.selectedCid = msg.cid;
       showMain();
-      addChatLine({ system: `Connected to server as ${msg.nickname}` });
+      addChatLine({ system: t("message.connected", { nickname: msg.nickname }) });
       initAudio();
       break;
     case "disconnected":
-      addChatLine({ system: `Disconnected${msg.reason ? ": " + msg.reason : ""}` });
+      addChatLine({ system: t("message.disconnected", { reason: msg.reason ? `: ${msg.reason}` : "" }) });
       onDisconnected();
       break;
     case "error":
-      addChatLine({ system: `Error: ${msg.message}` });
+      addChatLine({ system: t("message.error", { message: msg.message }) });
       showConnectError(msg.message);
       break;
     case "channels":
@@ -419,12 +614,12 @@ function handleJson(msg) {
       addChatLine(fromTextMessage(msg.msg));
       break;
     case "poked":
-      addChatLine({ system: `Poked by ${msg.invokerName}: ${msg.message}` });
+      addChatLine({ system: t("message.poked", { name: msg.invokerName, message: msg.message }) });
       break;
     case "joined":
       state.cid = msg.cid;
       state.selectedCid = msg.cid;
-      addChatLine({ system: "Joined channel" });
+      addChatLine({ system: t("message.joined") });
       renderClients();
       renderChannels();
       break;
@@ -469,7 +664,7 @@ async function initAudio() {
     microphoneReady = false;
     audio.micEnabled = false;
     renderMicMode();
-    addChatLine({ system: "Voice is unavailable: this browser needs WebAssembly support." });
+    addChatLine({ system: t("message.voice_unavailable") });
     return;
   }
   audio.setOnMicFrame((frame) => voiceCodec.encode(frame));
@@ -479,7 +674,7 @@ async function initAudio() {
   } else {
     microphoneReady = false;
     addChatLine({
-      system: `Microphone unavailable (you can still hear others): ${audio.micError?.message ?? "permission denied"}`,
+      system: t("message.mic_unavailable", { message: audio.micError?.message ?? t("message.permission_denied") }),
     });
     applyMicMode();
   }
@@ -493,13 +688,13 @@ let pttHeld = false;
 function renderMicMode() {
   const unavailable = microphoneReady === false;
   const definitions = {
-    open: ["🎤 Mic on", "Microphone on · Click for push-to-talk"],
-    ptt: [pttHeld ? "🟢 Talking" : "🎙 Hold to talk", "Push-to-talk · Hold this button to talk; click for mute"],
-    muted: ["🔇 Muted", "Microphone muted · Click to turn it on"],
+    open: [t("audio.mic_on"), t("audio.mic_on_title")],
+    ptt: [pttHeld ? t("audio.talking") : t("audio.hold"), t("audio.ptt_title")],
+    muted: [t("audio.muted"), t("audio.muted_title")],
   };
   const [label, title] = definitions[micMode];
-  el.micBtn.textContent = unavailable ? "🚫 Mic unavailable" : label;
-  el.micBtn.title = unavailable ? "Microphone is unavailable in this browser" : title;
+  el.micBtn.textContent = unavailable ? t("audio.unavailable") : label;
+  el.micBtn.title = unavailable ? t("audio.unavailable_title") : title;
   el.micBtn.setAttribute("aria-label", el.micBtn.title);
   el.micBtn.dataset.mode = micMode;
   el.micBtn.classList.toggle("active", micMode === "open" || (micMode === "ptt" && pttHeld));
@@ -618,12 +813,12 @@ function onDisconnected() {
 function startConnecting() {
   finishConnecting();
   el.connectBtn.disabled = true;
-  el.connectBtn.textContent = "Connecting…";
-  el.connectError.textContent = "Connecting to the TeamSpeak server…";
+  el.connectBtn.textContent = t("connect.connecting_button");
+  el.connectError.textContent = t("message.connecting");
   el.connectError.classList.add("connecting");
   el.connectError.classList.remove("hidden");
   connectTimer = setTimeout(() => {
-    showConnectError("TeamSpeak connection timed out after 35 seconds.");
+    showConnectError(t("message.timeout"));
     state.ws?.close();
   }, CONNECT_TIMEOUT_MS);
 }
@@ -632,7 +827,7 @@ function finishConnecting() {
   if (connectTimer) clearTimeout(connectTimer);
   connectTimer = null;
   el.connectBtn.disabled = false;
-  el.connectBtn.textContent = "Connect to server";
+  el.connectBtn.textContent = t("connect.button");
 }
 
 let refreshTimer = null;
@@ -647,8 +842,7 @@ function requestRefresh() {
 
 function renderServerInfo() {
   if (!state.serverInfo) return;
-  el.serverName.textContent = state.serverInfo.name || "TeamSpeak Server";
-  el.serverCounts.textContent = `${state.serverInfo.clientsOnline} / ${state.serverInfo.maxClients} online`;
+  el.serverName.textContent = state.serverInfo.name || t("server.fallback");
 }
 
 function buildChannelTree() {
@@ -681,7 +875,7 @@ function buildChannelTree() {
       const item = document.createElement("div");
       item.className = "channel-item";
       if (ch.id === state.selectedCid) item.classList.add("selected");
-      item.innerHTML = `<span class="icon">#</span><span>${escapeHtml(ch.name)}</span><span class="count">${clientCounts.get(ch.id) || 0}</span>`;
+      item.innerHTML = `<span class="channel-name">${escapeHtml(ch.name)}</span><span class="count">${clientCounts.get(ch.id) || 0}</span>`;
       item.addEventListener("click", () => selectChannel(ch.id));
       li.appendChild(item);
       const children = renderLevel(ch.id);
@@ -703,7 +897,7 @@ function renderChannels() {
 function selectChannel(cid) {
   state.selectedCid = cid;
   const ch = state.channels.find((c) => c.id === cid);
-  el.selectedChannelTitle.textContent = ch ? ch.name : "Clients";
+  el.selectedChannelTitle.textContent = ch ? ch.name : t("nav.clients");
   el.joinBtn.disabled = !state.connected || cid === state.cid;
   renderChannels();
   renderClients();
@@ -726,11 +920,9 @@ function renderClients() {
     item.className = "client-item" + (c.isSelf ? " self" : "");
     item.dataset.clientId = String(c.id);
     if (state.talking.has(c.id)) item.classList.add("talking");
-    const initial = (c.nickname[0] || "?").toUpperCase();
     item.innerHTML =
       `<div class="client-summary">` +
-        `<div class="avatar">${escapeHtml(initial)}</div>` +
-        `<div class="client-name">${escapeHtml(c.nickname)}${c.isSelf ? ' <span class="muted">(you)</span>' : ""}</div>` +
+        `<div class="client-name">${escapeHtml(c.nickname)}${c.isSelf ? ` <span class="muted">(${t("client.you")})</span>` : ""}</div>` +
         `<div class="talk-dot" aria-hidden="true"></div>` +
       `</div>`;
 
@@ -745,8 +937,8 @@ function renderClients() {
       muteButton.type = "button";
       muteButton.className = "client-mute";
       const renderMute = () => {
-        muteButton.textContent = settings.muted ? "🔇" : "🔊";
-        muteButton.title = `${settings.muted ? "Unmute" : "Mute"} ${c.nickname}`;
+        muteButton.textContent = settings.muted ? "M" : "V";
+        muteButton.title = t(settings.muted ? "client.unmute" : "client.mute", { nickname: c.nickname });
         muteButton.setAttribute("aria-label", muteButton.title);
         muteButton.setAttribute("aria-pressed", String(settings.muted));
         item.classList.toggle("client-muted", settings.muted);
@@ -767,7 +959,7 @@ function renderClients() {
       volumeInput.max = "200";
       volumeInput.step = "5";
       volumeInput.value = String(Math.round(settings.volume * 100));
-      volumeInput.setAttribute("aria-label", `Volume for ${c.nickname}`);
+      volumeInput.setAttribute("aria-label", t("client.volume", { nickname: c.nickname }));
       const volumeValue = document.createElement("output");
       volumeValue.value = `${volumeInput.value}%`;
       volumeInput.addEventListener("input", () => {
@@ -802,13 +994,13 @@ function addChatLine(entry) {
 
 function fromTextMessage(m) {
   if (m.targetMode === 1) {
-    return { who: `${m.invokerName} (PM)`, text: m.message };
+    return { who: `${m.invokerName} (${t("text.pm")})`, text: m.message };
   }
   if (m.targetMode === 3) {
-    return { who: m.invokerName, where: "[Server]", text: m.message };
+    return { who: m.invokerName, where: `[${t("text.server")}]`, text: m.message };
   }
   const ch = state.channels.find((c) => c.id === m.targetID);
-  return { who: m.invokerName, where: `[${ch ? ch.name : "channel"}]`, text: m.message };
+  return { who: m.invokerName, where: `[${ch ? ch.name : t("text.channel")}]`, text: m.message };
 }
 
 const talkingTimeouts = new Map();
@@ -890,3 +1082,5 @@ setInterval(() => {
   el.outMeter.style.width = `${Math.round(audio.outLevel * 100)}%`;
   el.outMeter.classList.toggle("hot", audio.outLevel > 0.85);
 }, 90);
+
+applyLanguage(language, false);
