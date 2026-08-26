@@ -40,7 +40,7 @@
             <div><h1>TeamSpeak Web</h1><span class="brand-caption" data-i18n="brand.caption">Browser voice client</span></div>
           </div>
           <div class="header-actions">
-            <button class="language-toggle" type="button" data-language-toggle><span data-language-label>中文</span></button>
+            <button class="language-toggle" type="button" data-language-toggle><span data-language-label>EN</span></button>
             <button class="theme-toggle" type="button" data-theme-toggle>
               <span class="theme-icon" data-theme-icon aria-hidden="true">◐</span>
               <span data-theme-label>Auto</span>
@@ -64,14 +64,19 @@
             <span><span data-i18n="connect.server_password">Server password</span> <span class="muted" data-i18n="common.optional">(optional)</span></span>
             <input id="f-password" type="password" placeholder="" />
           </label>
-          <label>
-            <span><span data-i18n="connect.default_channel">Default channel</span> <span class="muted" data-i18n="common.optional">(optional)</span></span>
-            <input id="f-channel" type="text" placeholder="Lobby" data-i18n-placeholder="connect.channel_placeholder" />
-          </label>
-          <label>
-            <span><span data-i18n="connect.channel_password">Channel password</span> <span class="muted" data-i18n="common.optional">(optional)</span></span>
-            <input id="f-channelpw" type="password" placeholder="" />
-          </label>
+          <details class="advanced-options field-wide">
+            <summary data-i18n="connect.advanced">Advanced options</summary>
+            <div class="advanced-fields">
+              <label>
+                <span><span data-i18n="connect.default_channel">Default channel</span> <span class="muted" data-i18n="common.optional">(optional)</span></span>
+                <input id="f-channel" type="text" placeholder="Lobby" data-i18n-placeholder="connect.channel_placeholder" />
+              </label>
+              <label>
+                <span><span data-i18n="connect.channel_password">Channel password</span> <span class="muted" data-i18n="common.optional">(optional)</span></span>
+                <input id="f-channelpw" type="password" placeholder="" />
+              </label>
+            </div>
+          </details>
           <div class="connect-actions field-wide">
             <button type="submit" id="connect-btn" class="btn-primary" data-i18n="connect.button">Connect</button>
             <p id="connect-error" class="error hidden" role="alert"></p>
@@ -89,13 +94,11 @@
       <nav class="navbar">
         <div class="nav-primary">
           <div class="server-status" id="server-status">
-            <span class="brand">TeamSpeak Web</span>
-            <span class="server-line"><i class="status-dot" aria-hidden="true"></i><span id="server-name">—</span></span>
+            <span class="brand" id="server-name">—</span>
           </div>
         </div>
         <div class="nav-actions">
-          <div class="self-info" id="self-info" data-i18n="status.not_connected">Not connected</div>
-          <button class="language-toggle compact" type="button" data-language-toggle><span data-language-label>中文</span></button>
+          <button class="language-toggle compact" type="button" data-language-toggle><span data-language-label>EN</span></button>
           <button class="theme-toggle compact" type="button" data-theme-toggle>
             <span class="theme-icon" data-theme-icon aria-hidden="true">◐</span>
             <span data-theme-label>Auto</span>
@@ -117,10 +120,8 @@
         </aside>
 
         <main class="panel clients-panel">
-          <div class="panel-header">
-            <div class="panel-heading"><h2 id="selected-channel-title" data-i18n="nav.clients">Clients</h2></div>
-            <button id="join-btn" class="btn" disabled data-i18n="action.join">Join</button>
-          </div>
+          <div class="panel-heading"><h2 id="selected-channel-title" data-i18n="nav.clients">Clients</h2></div>
+          <button id="join-btn" class="btn mobile-join-button" disabled data-i18n="action.join">Join</button>
           <div id="client-list" class="client-list"></div>
         </main>
 

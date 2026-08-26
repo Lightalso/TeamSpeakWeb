@@ -25,6 +25,7 @@ const TRANSLATIONS = {
     "connect.default_channel": "Default channel",
     "connect.channel_placeholder": "Lobby",
     "connect.channel_password": "Channel password",
+    "connect.advanced": "Advanced options",
     "connect.button": "Connect",
     "connect.connecting_button": "Connecting…",
     "connect.storage_note": "Connection details, including passwords, are stored in this browser.",
@@ -76,6 +77,7 @@ const TRANSLATIONS = {
     "client.mute": "Mute {nickname}",
     "client.unmute": "Unmute {nickname}",
     "client.volume": "Volume for {nickname}",
+    "client.volume_settings": "Volume",
     "text.pm": "PM",
     "text.server": "Server",
     "text.channel": "channel",
@@ -93,6 +95,7 @@ const TRANSLATIONS = {
     "connect.default_channel": "默认频道",
     "connect.channel_placeholder": "大厅",
     "connect.channel_password": "频道密码",
+    "connect.advanced": "高级选项",
     "connect.button": "连接",
     "connect.connecting_button": "正在连接…",
     "connect.storage_note": "连接信息（包括密码）保存在当前浏览器中。",
@@ -144,6 +147,7 @@ const TRANSLATIONS = {
     "client.mute": "静音 {nickname}",
     "client.unmute": "取消静音 {nickname}",
     "client.volume": "{nickname} 的音量",
+    "client.volume_settings": "音量",
     "text.pm": "私聊",
     "text.server": "服务器",
     "text.channel": "频道",
@@ -251,13 +255,12 @@ function clientPreferenceKey(client) {
 
 function clientAudioPreferences(client) {
   const saved = audioPreferences.clients[clientPreferenceKey(client)] ?? {};
-  return { volume: normalizeVolume(saved.volume), muted: Boolean(saved.muted) };
+  return { volume: normalizeVolume(saved.volume) };
 }
 
 function persistClientAudioPreferences(client, settings) {
   audioPreferences.clients[clientPreferenceKey(client)] = {
     volume: normalizeVolume(settings.volume),
-    muted: Boolean(settings.muted),
   };
   saveAudioPreferences();
 }
@@ -314,7 +317,7 @@ function applyLanguage(nextLanguage, persist = true) {
     node.setAttribute("aria-label", t(node.dataset.i18nAria));
   });
   document.querySelectorAll("[data-language-toggle]").forEach((button) => {
-    button.querySelector("[data-language-label]").textContent = language === "en" ? "中文" : "EN";
+    button.querySelector("[data-language-label]").textContent = language === "en" ? "EN" : "中文";
     button.title = t("language.switch");
     button.setAttribute("aria-label", button.title);
   });
@@ -368,6 +371,7 @@ const voiceCodecReady = voiceCodec.init().catch((error) => {
 });
 const CONNECT_TIMEOUT_MS = 35_000;
 let connectTimer = null;
+let pendingJoinCid = null;
 
 const $ = (sel) => document.querySelector(sel);
 const el = {
@@ -382,7 +386,6 @@ const el = {
   connectBtn: $("#connect-btn"),
   connectError: $("#connect-error"),
   serverName: $("#server-name"),
-  selfInfo: $("#self-info"),
   disconnectBtn: $("#disconnect-btn"),
   channelTree: $("#channel-tree"),
   selectedChannelTitle: $("#selected-channel-title"),
@@ -537,6 +540,7 @@ function handleJson(msg) {
       state.cid = msg.cid;
       state.nickname = msg.nickname;
       state.uid = msg.uid;
+      pendingJoinCid = null;
       if (msg.identity) {
         state.identity = msg.identity;
         storeIdentity(msg.identity);
@@ -561,6 +565,8 @@ function handleJson(msg) {
       onDisconnected();
       break;
     case "error":
+      pendingJoinCid = null;
+      updateJoinButton();
       addChatLine({ system: t("message.error", { message: msg.message }) });
       showConnectError(msg.message);
       break;
@@ -584,7 +590,9 @@ function handleJson(msg) {
       else state.clients.push(msg.client);
       if (msg.client.isSelf) {
         state.cid = msg.client.cid;
+        if (pendingJoinCid === state.cid) pendingJoinCid = null;
         if (!state.selectedCid || state.selectedCid === "0") state.selectedCid = msg.client.cid;
+        updateJoinButton();
       }
       renderClients();
       renderChannels();
@@ -603,6 +611,11 @@ function handleJson(msg) {
     case "clientMoved": {
       const client = state.clients.find((entry) => entry.id === msg.id);
       if (client) client.cid = msg.cid;
+      if (client?.isSelf || msg.id === state.clid) {
+        state.cid = msg.cid;
+        pendingJoinCid = null;
+        updateJoinButton();
+      }
       renderClients();
       renderChannels();
       break;
@@ -619,6 +632,8 @@ function handleJson(msg) {
     case "joined":
       state.cid = msg.cid;
       state.selectedCid = msg.cid;
+      pendingJoinCid = null;
+      updateJoinButton();
       addChatLine({ system: t("message.joined") });
       renderClients();
       renderChannels();
@@ -785,7 +800,7 @@ function isTyping(target) {
 function showMain() {
   el.connectScreen.classList.add("hidden");
   el.mainScreen.classList.remove("hidden");
-  el.selfInfo.textContent = state.nickname;
+  el.serverName.textContent = state.serverInfo?.name || lastConnection?.serverName || el.addr.value.trim() || t("server.fallback");
   requestRefresh();
   send({ type: "serverInfo" });
 }
@@ -794,6 +809,7 @@ function onDisconnected() {
   const wasConnected = state.connected;
   finishConnecting();
   state.connected = false;
+  pendingJoinCid = null;
   state.clients = [];
   state.channels = [];
   state.talking.clear();
@@ -876,7 +892,13 @@ function buildChannelTree() {
       item.className = "channel-item";
       if (ch.id === state.selectedCid) item.classList.add("selected");
       item.innerHTML = `<span class="channel-name">${escapeHtml(ch.name)}</span><span class="count">${clientCounts.get(ch.id) || 0}</span>`;
-      item.addEventListener("click", () => selectChannel(ch.id));
+      item.addEventListener("click", () => {
+        selectChannel(ch.id);
+        if (isMobileLayout()) switchMobileTab("clients-panel");
+      });
+      item.addEventListener("dblclick", () => {
+        if (!isMobileLayout()) joinChannel(ch.id);
+      });
       li.appendChild(item);
       const children = renderLevel(ch.id);
       if (children) li.appendChild(children);
@@ -898,9 +920,28 @@ function selectChannel(cid) {
   state.selectedCid = cid;
   const ch = state.channels.find((c) => c.id === cid);
   el.selectedChannelTitle.textContent = ch ? ch.name : t("nav.clients");
-  el.joinBtn.disabled = !state.connected || cid === state.cid;
+  updateJoinButton();
   renderChannels();
   renderClients();
+}
+
+function updateJoinButton() {
+  el.joinBtn.disabled = !state.connected
+    || !state.selectedCid
+    || state.selectedCid === state.cid
+    || pendingJoinCid !== null;
+}
+
+function isMobileLayout() {
+  return window.matchMedia("(max-width: 768px)").matches;
+}
+
+function joinChannel(cid) {
+  if (!state.connected || !cid || cid === state.cid || cid === pendingJoinCid) return;
+  state.selectedCid = cid;
+  pendingJoinCid = cid;
+  updateJoinButton();
+  send({ type: "join", cid });
 }
 
 function renderClients() {
@@ -908,7 +949,7 @@ function renderClients() {
     if (client.isSelf || client.type !== 0) continue;
     const settings = clientAudioPreferences(client);
     audio.setStreamVolume(client.id, settings.volume);
-    audio.setStreamMuted(client.id, settings.muted);
+    audio.setStreamMuted(client.id, false);
   }
 
   const inChannel = state.clients.filter((c) => c.cid === state.selectedCid);
@@ -928,28 +969,29 @@ function renderClients() {
 
     if (!c.isSelf && c.type === 0) {
       const settings = clientAudioPreferences(c);
-      item.classList.toggle("client-muted", settings.muted);
+      const summary = item.querySelector(".client-summary");
+
+      const toggleVolume = () => {
+        if (!isMobileLayout()) return;
+        const expanded = item.classList.toggle("volume-open");
+        summary.setAttribute("aria-expanded", String(expanded));
+      };
+      if (isMobileLayout()) {
+        summary.classList.add("volume-expand-target");
+        summary.tabIndex = 0;
+        summary.setAttribute("role", "button");
+        summary.setAttribute("aria-expanded", "false");
+        summary.setAttribute("aria-label", t("client.volume", { nickname: c.nickname }));
+        summary.addEventListener("click", toggleVolume);
+        summary.addEventListener("keydown", (event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          toggleVolume();
+        });
+      }
 
       const controls = document.createElement("div");
       controls.className = "client-audio-controls";
-
-      const muteButton = document.createElement("button");
-      muteButton.type = "button";
-      muteButton.className = "client-mute";
-      const renderMute = () => {
-        muteButton.textContent = settings.muted ? "M" : "V";
-        muteButton.title = t(settings.muted ? "client.unmute" : "client.mute", { nickname: c.nickname });
-        muteButton.setAttribute("aria-label", muteButton.title);
-        muteButton.setAttribute("aria-pressed", String(settings.muted));
-        item.classList.toggle("client-muted", settings.muted);
-      };
-      muteButton.addEventListener("click", () => {
-        settings.muted = !settings.muted;
-        audio.setStreamMuted(c.id, settings.muted);
-        persistClientAudioPreferences(c, settings);
-        renderMute();
-      });
-      renderMute();
 
       const volumeLabel = document.createElement("label");
       volumeLabel.className = "client-volume";
@@ -969,7 +1011,7 @@ function renderClients() {
       });
       volumeInput.addEventListener("change", () => persistClientAudioPreferences(c, settings));
       volumeLabel.append(volumeInput, volumeValue);
-      controls.append(muteButton, volumeLabel);
+      controls.append(volumeLabel);
       item.appendChild(controls);
     }
     el.clientList.appendChild(item);
@@ -1057,7 +1099,7 @@ el.disconnectBtn.addEventListener("click", () => {
 });
 
 el.joinBtn.addEventListener("click", () => {
-  if (state.selectedCid) send({ type: "join", cid: state.selectedCid });
+  joinChannel(state.selectedCid);
 });
 
 el.chatForm.addEventListener("submit", (e) => {
