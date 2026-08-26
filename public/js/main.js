@@ -325,7 +325,6 @@ function applyLanguage(nextLanguage, persist = true) {
     try { localStorage.setItem(LANGUAGE_STORAGE_KEY, language); } catch (_) {}
   }
   applyTheme(themeMode, false);
-  updateIdentityStatus();
   renderMicMode();
   if (connectTimer) el.connectBtn.textContent = t("connect.connecting_button");
   if (state.selectedCid) {
@@ -401,12 +400,7 @@ const el = {
   micVolumeValue: $("#mic-volume-value"),
   outputVolume: $("#output-volume"),
   outputVolumeValue: $("#output-volume-value"),
-  identityStatus: $("#identity-status"),
 };
-
-function updateIdentityStatus() {
-  el.identityStatus.textContent = t(state.identity ? "identity.saved" : "identity.new");
-}
 
 function restoreLastConnection() {
   if (lastConnection) {
@@ -416,7 +410,6 @@ function restoreLastConnection() {
     el.channel.value = lastConnection.defaultChannel;
     el.channelpw.value = lastConnection.channelPassword;
   }
-  updateIdentityStatus();
 }
 
 restoreLastConnection();
@@ -544,7 +537,6 @@ function handleJson(msg) {
       if (msg.identity) {
         state.identity = msg.identity;
         storeIdentity(msg.identity);
-        updateIdentityStatus();
       }
       saveLastConnection({
         address: el.addr.value,
