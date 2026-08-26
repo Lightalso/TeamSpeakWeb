@@ -182,7 +182,12 @@ export class Session {
 
     let identity;
     if (msg.identity) {
-      identity = identityFromString(msg.identity);
+      try {
+        identity = identityFromString(msg.identity);
+      } catch {
+        console.warn("[ts] cached browser identity is invalid; generating a replacement");
+        identity = generateIdentity(IDENTITY_LEVEL);
+      }
     } else {
       identity = generateIdentity(IDENTITY_LEVEL);
     }

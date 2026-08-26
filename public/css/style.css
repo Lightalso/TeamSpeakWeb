@@ -591,6 +591,8 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; background: v
 }
 
 @media (max-width: 768px) {
+  html, body, #app, #main-screen { width: 100%; max-width: 100%; }
+  body { overflow-x: hidden; }
   #connect-screen { padding: 18px 12px; }
   .connect-card { padding: 22px; border-radius: 16px; }
   .connect-card::before { margin: -22px 0 21px; }
@@ -603,10 +605,12 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; background: v
   .theme-toggle.compact { min-width: 40px; }
   .theme-toggle.compact [data-theme-label] { display: none; }
   #disconnect-btn { padding-inline: 11px; font-size: 12px; }
-  .mobile-tabs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 7px 9px; background: var(--panel); border-bottom: 1px solid var(--panel-border); }
+  .mobile-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; gap: 4px; padding: 7px 9px; background: var(--panel); border-bottom: 1px solid var(--panel-border); }
   .mobile-tab { padding: 8px 7px; border: 0; border-radius: 8px; color: var(--site-text); font-weight: 700; }
   .mobile-tab.active { color: var(--site-secondary); background: var(--primary-soft); }
-  .panel { padding: 16px; }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr); width: 100%; min-width: 0; }
+  .layout > .panel { display: none; width: 100%; min-width: 0; max-width: none; padding: 16px; }
+  .layout > .panel.active { display: flex; }
   .voice-bar { flex-wrap: wrap; min-height: 108px; padding: 10px 12px; }
   .meter-group { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .volume-control { grid-template-columns: 25px minmax(60px, 1fr) 34px; }

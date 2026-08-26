@@ -4,7 +4,63 @@ import { BrowserOpusCodec } from "./opus.js";
 const THEME_STORAGE_KEY = "tsweb_theme";
 const THEME_MODES = ["auto", "light", "dark"];
 const AUDIO_STORAGE_KEY = "tsweb_audio_preferences";
+const IDENTITY_STORAGE_KEY = "tsweb_identity";
+const LAST_CONNECTION_STORAGE_KEY = "tsweb_last_connection";
 const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+
+function readStoredIdentity() {
+  try {
+    const identity = localStorage.getItem(IDENTITY_STORAGE_KEY);
+    return identity?.trim() ? identity : undefined;
+  } catch (_) {
+    return undefined;
+  }
+}
+
+function storeIdentity(identity) {
+  if (typeof identity !== "string" || !identity.trim()) return;
+  try { localStorage.setItem(IDENTITY_STORAGE_KEY, identity); } catch (_) {}
+}
+
+function cleanStoredString(value, maxLength) {
+  return typeof value === "string" ? value.slice(0, maxLength) : "";
+}
+
+function readLastConnection() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(LAST_CONNECTION_STORAGE_KEY) || "null");
+    if (!saved || typeof saved !== "object") return null;
+    const profile = {
+      address: cleanStoredString(saved.address, 512).trim(),
+      nickname: cleanStoredString(saved.nickname, 30).trim(),
+      serverPassword: cleanStoredString(saved.serverPassword, 512),
+      defaultChannel: cleanStoredString(saved.defaultChannel, 256).trim(),
+      channelPassword: cleanStoredString(saved.channelPassword, 512),
+      serverName: cleanStoredString(saved.serverName, 256).trim(),
+      lastConnectedAt: cleanStoredString(saved.lastConnectedAt, 40),
+    };
+    return profile.address ? profile : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+let lastConnection = readLastConnection();
+
+function saveLastConnection(changes) {
+  const next = {
+    address: cleanStoredString(changes.address ?? lastConnection?.address, 512).trim(),
+    nickname: cleanStoredString(changes.nickname ?? lastConnection?.nickname, 30).trim(),
+    serverPassword: cleanStoredString(changes.serverPassword ?? lastConnection?.serverPassword, 512),
+    defaultChannel: cleanStoredString(changes.defaultChannel ?? lastConnection?.defaultChannel, 256).trim(),
+    channelPassword: cleanStoredString(changes.channelPassword ?? lastConnection?.channelPassword, 512),
+    serverName: cleanStoredString(changes.serverName ?? lastConnection?.serverName, 256).trim(),
+    lastConnectedAt: cleanStoredString(changes.lastConnectedAt ?? lastConnection?.lastConnectedAt, 40),
+  };
+  if (!next.address) return;
+  lastConnection = next;
+  try { localStorage.setItem(LAST_CONNECTION_STORAGE_KEY, JSON.stringify(next)); } catch (_) {}
+}
 
 function normalizeVolume(value, fallback = 1) {
   const number = Number(value);
@@ -87,7 +143,7 @@ const state = {
   cid: "",
   nickname: "",
   uid: "",
-  identity: localStorage.getItem("tsweb_identity") || undefined,
+  identity: readStoredIdentity(),
   channels: [],
   clients: [],
   serverInfo: null,
@@ -149,7 +205,43 @@ const el = {
   micVolumeValue: $("#mic-volume-value"),
   outputVolume: $("#output-volume"),
   outputVolumeValue: $("#output-volume-value"),
+  identityStatus: $("#identity-status"),
 };
+
+function restoreLastConnection() {
+  if (lastConnection) {
+    el.addr.value = lastConnection.address;
+    el.nickname.value = lastConnection.nickname;
+    el.password.value = lastConnection.serverPassword;
+    el.channel.value = lastConnection.defaultChannel;
+    el.channelpw.value = lastConnection.channelPassword;
+  }
+  el.identityStatus.textContent = state.identity
+    ? "Saved TeamSpeak identity ready; it will be reused."
+    : "A private TeamSpeak identity will be created and remembered after connecting.";
+}
+
+restoreLastConnection();
+
+function persistConnectionForm() {
+  const address = el.addr.value.trim();
+  saveLastConnection({
+    address,
+    nickname: el.nickname.value.trim(),
+    serverPassword: el.password.value,
+    defaultChannel: el.channel.value.trim(),
+    channelPassword: el.channelpw.value,
+    serverName: lastConnection?.address === address ? lastConnection.serverName : "",
+  });
+}
+
+let connectionFormSaveTimer = null;
+el.form.addEventListener("input", () => {
+  clearTimeout(connectionFormSaveTimer);
+  connectionFormSaveTimer = setTimeout(persistConnectionForm, 150);
+});
+el.form.addEventListener("change", persistConnectionForm);
+window.addEventListener("beforeunload", persistConnectionForm);
 
 function renderMasterVolumeControls() {
   el.micVolume.value = String(Math.round(audioPreferences.micVolume * 100));
@@ -248,8 +340,18 @@ function handleJson(msg) {
       state.uid = msg.uid;
       if (msg.identity) {
         state.identity = msg.identity;
-        localStorage.setItem("tsweb_identity", msg.identity);
+        storeIdentity(msg.identity);
+        el.identityStatus.textContent = "Saved TeamSpeak identity ready; it will be reused.";
       }
+      saveLastConnection({
+        address: el.addr.value,
+        nickname: msg.nickname,
+        serverPassword: el.password.value,
+        defaultChannel: el.channel.value,
+        channelPassword: el.channelpw.value,
+        serverName: lastConnection?.address === el.addr.value.trim() ? lastConnection.serverName : "",
+        lastConnectedAt: new Date().toISOString(),
+      });
       state.selectedCid = msg.cid;
       showMain();
       addChatLine({ system: `Connected to server as ${msg.nickname}` });
@@ -274,6 +376,7 @@ function handleJson(msg) {
       break;
     case "serverInfo":
       state.serverInfo = msg.info;
+      if (state.connected && msg.info?.name) saveLastConnection({ serverName: msg.info.name });
       renderServerInfo();
       break;
     case "clientEnter": {
@@ -671,6 +774,8 @@ document.querySelectorAll(".mobile-tab").forEach((tab) => {
 
 el.form.addEventListener("submit", (e) => {
   e.preventDefault();
+  clearTimeout(connectionFormSaveTimer);
+  persistConnectionForm();
   startConnecting();
   connect(
     el.addr.value.trim(),
