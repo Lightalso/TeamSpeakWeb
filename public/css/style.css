@@ -244,7 +244,8 @@ input[type="text"]:focus, input[type="password"]:focus {
 }
 .btn-voice.active { background: var(--site-secondary); border-color: var(--site-secondary); }
 .btn-voice.held { background: var(--ok); }
-.ptt-toggle { display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem; }
+.mic-mode-button { min-width: 150px; touch-action: manipulation; user-select: none; }
+.mic-mode-button.muted { color: var(--site-accent); background: var(--danger-soft); border-color: color-mix(in srgb, var(--site-accent) 28%, transparent); }
 .meter { display: flex; align-items: center; gap: 0.5rem; }
 .meter-label { font-size: 0.75rem; width: 28px; }
 .meter-track {
@@ -317,7 +318,7 @@ input[type="text"]:focus, input[type="password"]:focus {
     padding: 0.6rem 1rem;
     font-size: 0.95rem;
   }
-  #ptt-btn { flex: 1; }
+  .mic-mode-button { flex: 1; }
   .meter { flex: 1; }
   .meter-track { width: auto; flex: 1; }
 
@@ -558,8 +559,7 @@ input[type="text"]:focus, input[type="password"]:focus { border-color: var(--sit
 .voice-controls, .meter-group { display: flex; align-items: center; gap: 12px; }
 .btn-voice { color: var(--site-text-bright); background: var(--channel); border-color: var(--panel-border); }
 .btn-voice.active { background: var(--site-secondary); border-color: var(--site-secondary); }
-.ptt-toggle { color: var(--site-text); font-weight: 650; }
-.ptt-toggle input { width: 17px; height: 17px; accent-color: var(--site-secondary); }
+.mic-mode-button.held { background: var(--ok); border-color: var(--ok); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 16%, transparent); }
 .meter-track { background: var(--channel); }
 .meter-fill { display: block; background: linear-gradient(90deg, #2ed3b7, #b8dc4e); }
 .meter-fill.hot { background: var(--site-accent); }
@@ -629,7 +629,6 @@ input[type="range"]::-moz-range-thumb { width: 12px; height: 12px; background: v
   .server-line { max-width: 120px; }
   .voice-controls { gap: 7px; }
   .voice-controls button { min-width: 0; padding-inline: 10px; font-size: 12px; }
-  .ptt-toggle span { display: none; }
   .meter-group { gap: 7px; }
   .volume-control { grid-template-columns: 22px minmax(45px, 1fr) 31px; gap: 4px; }
   .volume-control output { font-size: 9px; }

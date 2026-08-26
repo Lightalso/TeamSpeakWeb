@@ -6,6 +6,7 @@ const THEME_MODES = ["auto", "light", "dark"];
 const AUDIO_STORAGE_KEY = "tsweb_audio_preferences";
 const IDENTITY_STORAGE_KEY = "tsweb_identity";
 const LAST_CONNECTION_STORAGE_KEY = "tsweb_last_connection";
+const MIC_MODES = ["open", "ptt", "muted"];
 const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
 
 function readStoredIdentity() {
@@ -67,16 +68,21 @@ function normalizeVolume(value, fallback = 1) {
   return Number.isFinite(number) ? Math.max(0, Math.min(2, number)) : fallback;
 }
 
+function normalizeMicMode(value) {
+  return MIC_MODES.includes(value) ? value : "open";
+}
+
 function readAudioPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem(AUDIO_STORAGE_KEY) || "null");
     return {
       micVolume: normalizeVolume(saved?.micVolume),
       outputVolume: normalizeVolume(saved?.outputVolume),
+      micMode: normalizeMicMode(saved?.micMode),
       clients: saved?.clients && typeof saved.clients === "object" ? saved.clients : {},
     };
   } catch (_) {
-    return { micVolume: 1, outputVolume: 1, clients: {} };
+    return { micVolume: 1, outputVolume: 1, micMode: "open", clients: {} };
   }
 }
 
@@ -197,8 +203,6 @@ const el = {
   chatForm: $("#chat-form"),
   chatInput: $("#chat-input"),
   micBtn: $("#mic-btn"),
-  pttToggle: $("#ptt-toggle"),
-  pttBtn: $("#ptt-btn"),
   micMeter: $("#mic-meter"),
   outMeter: $("#out-meter"),
   micVolume: $("#mic-volume"),
@@ -456,57 +460,126 @@ function sendOpusFrame(packet) {
 // ---- Audio -------------------------------------------------------------------
 
 let audioInited = false;
+let microphoneReady = null;
 async function initAudio() {
   if (audioInited) return;
   audioInited = true;
   const [, codecReady] = await Promise.all([audio.init(), voiceCodecReady]);
   if (!codecReady) {
+    microphoneReady = false;
     audio.micEnabled = false;
-    el.micBtn.classList.remove("active");
+    renderMicMode();
     addChatLine({ system: "Voice is unavailable: this browser needs WebAssembly support." });
     return;
   }
   audio.setOnMicFrame((frame) => voiceCodec.encode(frame));
   if (audio.micAvailable) {
-    audio.micEnabled = true;
-    el.micBtn.classList.add("active");
+    microphoneReady = true;
+    applyMicMode();
   } else {
+    microphoneReady = false;
     addChatLine({
       system: `Microphone unavailable (you can still hear others): ${audio.micError?.message ?? "permission denied"}`,
     });
-    el.micBtn.classList.remove("active");
+    applyMicMode();
   }
 }
 
 // ---- Voice controls ----------------------------------------------------------
 
+let micMode = normalizeMicMode(audioPreferences.micMode);
 let pttHeld = false;
-function updatePtt() {
-  audio.ptt = el.pttToggle.checked;
-  audio.pttHeld = pttHeld;
-  el.pttBtn.classList.toggle("active", el.pttToggle.checked);
-  el.pttBtn.classList.toggle("held", pttHeld && el.pttToggle.checked);
+
+function renderMicMode() {
+  const unavailable = microphoneReady === false;
+  const definitions = {
+    open: ["🎤 Mic on", "Microphone on · Click for push-to-talk"],
+    ptt: [pttHeld ? "🟢 Talking" : "🎙 Hold to talk", "Push-to-talk · Hold this button to talk; click for mute"],
+    muted: ["🔇 Muted", "Microphone muted · Click to turn it on"],
+  };
+  const [label, title] = definitions[micMode];
+  el.micBtn.textContent = unavailable ? "🚫 Mic unavailable" : label;
+  el.micBtn.title = unavailable ? "Microphone is unavailable in this browser" : title;
+  el.micBtn.setAttribute("aria-label", el.micBtn.title);
+  el.micBtn.dataset.mode = micMode;
+  el.micBtn.classList.toggle("active", micMode === "open" || (micMode === "ptt" && pttHeld));
+  el.micBtn.classList.toggle("held", micMode === "ptt" && pttHeld);
+  el.micBtn.classList.toggle("muted", micMode === "muted");
 }
-el.micBtn.addEventListener("click", () => {
-  audio.micEnabled = !audio.micEnabled;
-  el.micBtn.classList.toggle("active", audio.micEnabled);
-});
-el.pttToggle.addEventListener("change", updatePtt);
-el.pttBtn.addEventListener("mousedown", () => { pttHeld = true; updatePtt(); });
-el.pttBtn.addEventListener("mouseup", () => { pttHeld = false; updatePtt(); });
-el.pttBtn.addEventListener("mouseleave", () => { pttHeld = false; updatePtt(); });
-el.pttBtn.addEventListener("touchstart", (e) => { e.preventDefault(); pttHeld = true; updatePtt(); });
-el.pttBtn.addEventListener("touchend", () => { pttHeld = false; updatePtt(); });
-window.addEventListener("keydown", (e) => {
-  if (e.code === "Space" && el.pttToggle.checked && !isTyping(e.target)) {
-    e.preventDefault();
+
+function applyMicMode() {
+  audio.ptt = micMode === "ptt";
+  audio.pttHeld = micMode === "ptt" && pttHeld;
+  audio.micEnabled = audio.micAvailable && micMode !== "muted";
+  renderMicMode();
+}
+
+function setMicMode(mode, persist = true) {
+  micMode = normalizeMicMode(mode);
+  pttHeld = false;
+  applyMicMode();
+  if (persist) {
+    audioPreferences.micMode = micMode;
+    saveAudioPreferences();
+  }
+}
+
+let longPressTimer = null;
+let longPressActive = false;
+let suppressNextMicClick = false;
+
+function endMicPress() {
+  clearTimeout(longPressTimer);
+  longPressTimer = null;
+  if (!longPressActive) return;
+  longPressActive = false;
+  suppressNextMicClick = true;
+  pttHeld = false;
+  applyMicMode();
+}
+
+el.micBtn.addEventListener("pointerdown", (event) => {
+  if (micMode !== "ptt" || (event.button !== undefined && event.button !== 0)) return;
+  longPressActive = false;
+  el.micBtn.setPointerCapture?.(event.pointerId);
+  longPressTimer = setTimeout(() => {
+    longPressActive = true;
     pttHeld = true;
-    updatePtt();
+    applyMicMode();
+  }, 250);
+});
+el.micBtn.addEventListener("pointerup", endMicPress);
+el.micBtn.addEventListener("pointercancel", endMicPress);
+el.micBtn.addEventListener("lostpointercapture", endMicPress);
+el.micBtn.addEventListener("contextmenu", (event) => {
+  if (micMode === "ptt") event.preventDefault();
+});
+el.micBtn.addEventListener("click", (event) => {
+  if (suppressNextMicClick) {
+    suppressNextMicClick = false;
+    event.preventDefault();
+    return;
+  }
+  const currentIndex = MIC_MODES.indexOf(micMode);
+  setMicMode(MIC_MODES[(currentIndex + 1) % MIC_MODES.length]);
+});
+
+window.addEventListener("keydown", (e) => {
+  if (e.code === "Space" && micMode === "ptt" && !isTyping(e.target)) {
+    e.preventDefault();
+    if (e.repeat) return;
+    pttHeld = true;
+    applyMicMode();
   }
 });
 window.addEventListener("keyup", (e) => {
-  if (e.code === "Space") { pttHeld = false; updatePtt(); }
+  if (e.code === "Space" && micMode === "ptt") {
+    pttHeld = false;
+    applyMicMode();
+  }
 });
+
+renderMicMode();
 
 function isTyping(target) {
   return target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA");
