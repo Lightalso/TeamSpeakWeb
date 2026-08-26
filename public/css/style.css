@@ -34,6 +34,7 @@ h2 { font-size: 1rem; text-transform: uppercase; letter-spacing: 0.05em; }
 .muted { color: var(--site-text); }
 .small { font-size: 0.8rem; }
 .error { color: var(--site-accent); margin-top: 0.75rem; }
+.error.connecting { color: var(--site-text); }
 
 #app { height: 100vh; display: flex; flex-direction: column; }
 
@@ -91,12 +92,12 @@ input[type="text"]:focus, input[type="password"]:focus {
   color: #fff;
 }
 .btn:hover:not(:disabled) { background: var(--navbar-border); }
-.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn:disabled, .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-primary {
   background: var(--site-secondary);
   color: #fff;
 }
-.btn-primary:hover { background: #c3277c; }
+.btn-primary:hover:not(:disabled) { background: #c3277c; }
 
 /* ---- Navbar ---- */
 .navbar {
@@ -322,4 +323,3 @@ input[type="text"]:focus, input[type="password"]:focus {
 
   .connect-card { padding: 1.5rem; }
 }
-

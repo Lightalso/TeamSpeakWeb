@@ -16,6 +16,8 @@ const state = {
 };
 
 const audio = new AudioEngine();
+const CONNECT_TIMEOUT_MS = 35_000;
+let connectTimer = null;
 
 const $ = (sel) => document.querySelector(sel);
 const el = {
@@ -74,13 +76,23 @@ function connect(addr, nickname, password, channel, channelpw) {
     else handleBinary(e.data);
   };
 
-  ws.onclose = () => onDisconnected();
-  ws.onerror = () => onDisconnected();
+  ws.onclose = () => {
+    if (!state.connected && el.connectError.classList.contains("connecting")) {
+      showConnectError("Connection closed before TeamSpeak login completed.");
+    }
+    onDisconnected();
+  };
+  ws.onerror = () => {
+    if (!state.connected) showConnectError("Cannot connect to the local WebSocket bridge.");
+  };
 }
 
 function handleJson(msg) {
   switch (msg.type) {
     case "connected":
+      finishConnecting();
+      el.connectError.classList.add("hidden");
+      el.connectError.classList.remove("connecting");
       state.connected = true;
       state.clid = msg.clid;
       state.cid = msg.cid;
@@ -116,11 +128,30 @@ function handleJson(msg) {
       state.serverInfo = msg.info;
       renderServerInfo();
       break;
-    case "clientEnter":
-    case "clientLeave":
-    case "clientMoved":
-      requestRefresh();
+    case "clientEnter": {
+      const index = state.clients.findIndex((client) => client.id === msg.client.id);
+      if (index >= 0) state.clients[index] = msg.client;
+      else state.clients.push(msg.client);
+      if (msg.client.isSelf) {
+        state.cid = msg.client.cid;
+        if (!state.selectedCid || state.selectedCid === "0") state.selectedCid = msg.client.cid;
+      }
+      renderClients();
+      renderChannels();
       break;
+    }
+    case "clientLeave":
+      state.clients = state.clients.filter((client) => client.id !== msg.id);
+      renderClients();
+      renderChannels();
+      break;
+    case "clientMoved": {
+      const client = state.clients.find((entry) => entry.id === msg.id);
+      if (client) client.cid = msg.cid;
+      renderClients();
+      renderChannels();
+      break;
+    }
     case "clientTalking":
       setTalking(msg.clid, msg.talking);
       break;
@@ -134,7 +165,8 @@ function handleJson(msg) {
       state.cid = msg.cid;
       state.selectedCid = msg.cid;
       addChatLine({ system: "Joined channel" });
-      requestRefresh();
+      renderClients();
+      renderChannels();
       break;
     default:
       break;
@@ -148,7 +180,7 @@ function handleBinary(data) {
     const dv = new DataView(data, 3);
     const n = (bytes.length - 3) / 2;
     const f32 = new Float32Array(n);
-    for (let i = 0; i < n; i++) f32[i] = dv.getInt16(3 + i * 2, true) / 0x8000;
+    for (let i = 0; i < n; i++) f32[i] = dv.getInt16(i * 2, true) / 0x8000;
     audio.play(f32);
     setTalking(clid, true, true);
   }
@@ -234,12 +266,38 @@ function showMain() {
 }
 
 function onDisconnected() {
+  const wasConnected = state.connected;
+  finishConnecting();
   state.connected = false;
   state.clients = [];
   state.channels = [];
   el.mainScreen.classList.add("hidden");
   el.connectScreen.classList.remove("hidden");
   el.connectBtn.disabled = false;
+  if (wasConnected) {
+    el.connectError.classList.add("hidden");
+    el.connectError.classList.remove("connecting");
+  }
+}
+
+function startConnecting() {
+  finishConnecting();
+  el.connectBtn.disabled = true;
+  el.connectBtn.textContent = "Connecting…";
+  el.connectError.textContent = "Connecting to the TeamSpeak server…";
+  el.connectError.classList.add("connecting");
+  el.connectError.classList.remove("hidden");
+  connectTimer = setTimeout(() => {
+    showConnectError("TeamSpeak connection timed out after 35 seconds.");
+    state.ws?.close();
+  }, CONNECT_TIMEOUT_MS);
+}
+
+function finishConnecting() {
+  if (connectTimer) clearTimeout(connectTimer);
+  connectTimer = null;
+  el.connectBtn.disabled = false;
+  el.connectBtn.textContent = "Connect";
 }
 
 let refreshTimer = null;
@@ -395,8 +453,7 @@ document.querySelectorAll(".mobile-tab").forEach((tab) => {
 
 el.form.addEventListener("submit", (e) => {
   e.preventDefault();
-  el.connectBtn.disabled = true;
-  el.connectError.classList.add("hidden");
+  startConnecting();
   connect(
     el.addr.value.trim(),
     el.nickname.value.trim() || "Guest",
@@ -424,9 +481,10 @@ el.chatForm.addEventListener("submit", (e) => {
 });
 
 function showConnectError(msg) {
+  finishConnecting();
   el.connectError.textContent = msg;
+  el.connectError.classList.remove("connecting");
   el.connectError.classList.remove("hidden");
-  el.connectBtn.disabled = false;
 }
 
 // VU meter polling

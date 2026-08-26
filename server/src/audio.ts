@@ -16,7 +16,9 @@ type OpusEncoderCtor = new (rate: number, channels: number) => OpusEncoderType;
  * voice disabled) if the binary is unavailable.
  */
 export class OpusCodec {
+  #ctor: OpusEncoderCtor | null = null;
   #encoder: OpusEncoderType | null = null;
+  #decoders = new Map<number, OpusEncoderType>();
   #loading: Promise<void> | null = null;
 
   /** Load the native module. Resolves false if Opus is unavailable. */
@@ -35,6 +37,7 @@ export class OpusCodec {
           imported.OpusEncoder ??
           (typeof imported.default === "function" ? imported.default : imported.default?.OpusEncoder);
         if (!ctor) throw new Error("unable to resolve OpusEncoder export");
+        this.#ctor = ctor;
         this.#encoder = new ctor(SAMPLE_RATE, CHANNELS);
       })();
     }
@@ -57,8 +60,13 @@ export class OpusCodec {
   }
 
   /** Decode an Opus packet back to Int16 LE PCM. */
-  decode(opus: Buffer): Buffer {
-    if (!this.#encoder) throw new Error("opus codec not loaded");
-    return this.#encoder.decode(opus);
+  decode(opus: Buffer, streamId = 0): Buffer {
+    if (!this.#ctor) throw new Error("opus codec not loaded");
+    let decoder = this.#decoders.get(streamId);
+    if (!decoder) {
+      decoder = new this.#ctor(SAMPLE_RATE, CHANNELS);
+      this.#decoders.set(streamId, decoder);
+    }
+    return decoder.decode(opus);
   }
 }

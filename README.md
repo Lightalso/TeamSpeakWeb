@@ -94,6 +94,27 @@ SSL_CERT=cert.pem SSL_KEY=key.pem npm start
 Then open `https://<your-host>:3000` and accept the self-signed warning. (Use
 `mkcert` for a locally-trusted certificate instead of a raw self-signed one.)
 
+## Troubleshooting
+
+### `send ENETUNREACH`
+
+The bridge resolves hostname connections to an IPv4 address before creating the
+TeamSpeak UDP client. This avoids Node selecting an unreachable IPv6 route on
+dual-stack DNS names. Explicit IPv4, bracketed IPv6, and custom ports are
+preserved.
+
+### `insufficient client permissions (id=2568)`
+
+Some servers reject the optional `channellist`, `clientlist`, and `serverinfo`
+commands for guests. The bridge primarily builds its UI from the standard data
+the server pushes during the client welcome sequence, just like a desktop
+client, so these extra permissions are not normally required. A rejected query
+is remembered and is not repeated for every client event.
+
+If a heavily customized server also suppresses the corresponding welcome data,
+grant the connecting group `b_virtualserver_channel_list`,
+`b_virtualserver_client_list`, and `b_virtualserver_info_view` as a fallback.
+
 ## Project layout
 
 ```
@@ -102,6 +123,7 @@ server/src/
   session.ts    one TeamSpeak client instance per browser session
   audio.ts      Opus encode/decode (lazy-loaded @discordjs/opus)
   protocol.ts   WebSocket message contracts
+  welcome.ts    standard welcome-sequence channel/server data capture
 public/         the browser frontend (vanilla JS, no build step)
 scripts/        postinstall helper for the Opus native binary
 参考仓库/        reference source material (gitignored)

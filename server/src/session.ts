@@ -10,6 +10,8 @@ import {
   poke,
 } from "@honeybbq/teamspeak-client";
 import type { WebSocket } from "ws";
+import { lookup } from "node:dns/promises";
+import { isIP } from "node:net";
 import {
   OpusCodec,
   FRAME_SAMPLES,
@@ -18,14 +20,51 @@ import {
   type ClientMessage,
   type ServerMessage,
   type ClientEntry,
+  type ChannelEntry,
+  type ServerInfo,
   MIC_FRAME,
   SPEAKER_FRAME,
 } from "./protocol.js";
+import { attachWelcomeCapture } from "./welcome.js";
 
 const CODEC = 5; // Opus Music (OPUS_APPLICATION_AUDIO matches @discordjs/opus)
 const IDENTITY_LEVEL = 8;
 const FRAME_BYTES = FRAME_SAMPLES * 2;
 const TALKING_TIMEOUT_MS = 500;
+
+/**
+ * Resolve a `host[:port]` address to an explicit IPv4 literal, preserving the
+ * port. Already-numeric addresses (IPv4/IPv6) are returned unchanged, and a
+ * failed lookup falls back to the original hostname.
+ */
+export async function resolveIpv4(addr: string): Promise<string> {
+  const input = addr.trim();
+  let host = input;
+  let port = "9987";
+
+  const bracketedIpv6 = /^\[([^\]]+)](?::(\d+))?$/.exec(input);
+  if (bracketedIpv6) {
+    host = bracketedIpv6[1]!;
+    port = bracketedIpv6[2] ?? port;
+  } else if (isIP(input) !== 6) {
+    const hostAndPort = /^(.*):(\d+)$/.exec(input);
+    if (hostAndPort) {
+      host = hostAndPort[1]!;
+      port = hostAndPort[2]!;
+    }
+  }
+
+  const ipFamily = isIP(host);
+  if (ipFamily) {
+    return ipFamily === 6 ? `[${host}]:${port}` : `${host}:${port}`;
+  }
+  try {
+    const { address } = await lookup(host, { family: 4 });
+    return `${address}:${port}`;
+  } catch {
+    return `${host}:${port}`;
+  }
+}
 
 /** Unescape a TeamSpeak-protocol-escaped string. */
 export function tsUnescape(s: string): string {
@@ -68,6 +107,16 @@ export class Session {
   #micBuf = Buffer.alloc(0);
   #talking = new Map<number, NodeJS.Timeout>();
   #closed = false;
+  #permissionWarned = false;
+  #channelQueryDenied = false;
+  #clientQueryDenied = false;
+  #serverInfoQueryDenied = false;
+  #fallbackQueriesAt = 0;
+  #channels = new Map<string, ChannelEntry>();
+  #clients = new Map<number, ClientEntry>();
+  #serverInfoCache: ServerInfo | null = null;
+  #subscribedAll = false;
+  #voiceDecodeErrors = 0;
 
   constructor(ws: WebSocket) {
     this.#ws = ws;
@@ -89,7 +138,8 @@ export class Session {
 
   async handleMessage(msg: ClientMessage): Promise<void> {
     try {
-      switch (msg.type) {        case "connect":
+      switch (msg.type) {
+        case "connect":
           await this.#connect(msg);
           break;
         case "disconnect":
@@ -141,6 +191,16 @@ export class Session {
 
   async #connect(msg: Extract<ClientMessage, { type: "connect" }>): Promise<void> {
     if (this.#client) await this.disconnect();
+    this.#permissionWarned = false;
+    this.#channelQueryDenied = false;
+    this.#clientQueryDenied = false;
+    this.#serverInfoQueryDenied = false;
+    this.#fallbackQueriesAt = 0;
+    this.#channels.clear();
+    this.#clients.clear();
+    this.#serverInfoCache = null;
+    this.#subscribedAll = false;
+    this.#voiceDecodeErrors = 0;
 
     let identity;
     if (msg.identity) {
@@ -150,7 +210,12 @@ export class Session {
     }
     this.#identityStr = identity.toString();
 
-    const client = new Client(identity, msg.addr, msg.nickname, {
+    // Resolve hostnames to an IPv4 address up-front. A hostname with both A
+    // and AAAA records can make the library's `udp4` socket re-resolve to IPv6
+    // during sends, which fails with ENETUNREACH on hosts without IPv6 routing.
+    const addr = await resolveIpv4(msg.addr);
+
+    const client = new Client(identity, addr, msg.nickname, {
       serverPassword: msg.serverPassword ?? "",
       defaultChannel: msg.defaultChannel ?? "",
       defaultChannelPassword: msg.defaultChannelPassword ?? "",
@@ -163,6 +228,7 @@ export class Session {
     });
 
     client.on("connected", () => {
+      this.#fallbackQueriesAt = Date.now() + 2_000;
       this.send({
         type: "connected",
         clid: client.clientID(),
@@ -174,6 +240,12 @@ export class Session {
       // The welcome sequence may still be streaming; refresh shortly after.
       setTimeout(() => void this.#refresh(), 400);
       setTimeout(() => void this.#refresh(), 1500);
+      setTimeout(() => {
+        void (async () => {
+          await this.#refresh();
+          await this.#serverInfo();
+        })();
+      }, 2500);
     });
 
     client.on("disconnected", (err) => {
@@ -187,16 +259,30 @@ export class Session {
     });
 
     client.on("clientEnter", (info) => {
-      this.send({ type: "clientEnter", client: this.#toClientEntry(info, client.clientID(), true) });
-      if (info.id === client.clientID()) void this.#refresh();
+      let entry = this.#toClientEntry(info, client.clientID(), true);
+      const captured = this.#clients.get(entry.id);
+      if (entry.cid === "0" && captured && captured.cid !== "0") entry = { ...entry, cid: captured.cid };
+      this.#clients.set(entry.id, entry);
+      this.send({ type: "clientEnter", client: entry });
+      this.#sendClientSnapshot();
+      if (entry.isSelf) void this.#subscribeAllChannels(client);
     });
 
     client.on("clientLeave", (evt) => {
+      // Reasons 0-2 mean view/subscription changes rather than a definitive
+      // disconnect. Keeping the entry prevents clients in other channels from
+      // disappearing while channelsubscribeall is being established.
+      if (evt.reasonID <= 2) return;
+      this.#clients.delete(evt.id);
       this.send({ type: "clientLeave", id: evt.id, reasonID: evt.reasonID, reasonMsg: tsUnescape(evt.reasonMsg) });
+      this.#sendClientSnapshot();
     });
 
     client.on("clientMoved", (evt) => {
+      const existing = this.#clients.get(evt.id);
+      if (existing) this.#clients.set(evt.id, { ...existing, cid: evt.targetChannelID.toString() });
       this.send({ type: "clientMoved", id: evt.id, cid: evt.targetChannelID.toString() });
+      this.#sendClientSnapshot();
     });
 
     client.on("textMessage", (m) => {
@@ -223,6 +309,40 @@ export class Session {
 
     this.#client = client;
     await client.connect();
+    attachWelcomeCapture(client, {
+      onChannels: (channels) => {
+        for (const channel of channels) {
+          const entry = {
+            id: channel.id.toString(),
+            parentID: channel.parentID.toString(),
+            name: channel.name,
+          };
+          if (entry.id !== "0" && entry.name) this.#channels.set(entry.id, entry);
+        }
+        this.#sendChannelSnapshot();
+      },
+      onServerInfo: (info) => {
+        this.#serverInfoCache = info;
+        this.send({ type: "serverInfo", info });
+      },
+      onClientEnter: (captured) => {
+        const entry: ClientEntry = {
+          ...captured,
+          isSelf: captured.id === client.clientID(),
+          talking: this.#talking.has(captured.id),
+        };
+        this.#clients.set(entry.id, entry);
+        this.send({ type: "clientEnter", client: entry });
+        this.#sendClientSnapshot();
+      },
+      onClientMoved: (id, cid) => {
+        const existing = this.#clients.get(id);
+        if (!existing) return;
+        this.#clients.set(id, { ...existing, cid });
+        this.send({ type: "clientMoved", id, cid });
+        this.#sendClientSnapshot();
+      },
+    });
     try {
       await client.waitConnected(AbortSignal.timeout(30_000));
     } catch (err) {
@@ -245,13 +365,29 @@ export class Session {
     // Only Opus voice (4) and Opus music (5) are supported.
     if (codec !== 4 && codec !== 5) return;
     if (!this.#codec?.loaded) return;
+    // One-byte packets are TS voice-stream terminators/DTX markers, not Opus.
+    if (data.length <= 1) return;
     try {
-      const pcm = this.#codec.decode(Buffer.from(data));
+      const pcm = this.#codec.decode(Buffer.from(data), clientId);
       this.sendSpeakerPcm(clientId, pcm);
-    } catch {
-      // Drop malformed frames.
+    } catch (err) {
+      if (this.#voiceDecodeErrors++ < 3) {
+        console.warn(`[voice] failed to decode client ${clientId}:`, (err as Error).message);
+      }
+      return;
     }
     this.#markTalking(clientId);
+  }
+
+  async #subscribeAllChannels(client: Client): Promise<void> {
+    if (this.#subscribedAll || this.#client !== client) return;
+    this.#subscribedAll = true;
+    try {
+      await client.execCommand("channelsubscribeall", 5_000);
+    } catch (err) {
+      this.#subscribedAll = false;
+      console.warn("[ts] unable to subscribe to all channels:", (err as Error).message);
+    }
   }
 
   #markTalking(clientId: number): void {
@@ -270,27 +406,58 @@ export class Session {
 
   async #refresh(): Promise<void> {
     if (!this.#client) return;
-    const [channels, clients] = await Promise.all([
-      listChannels(this.#client),
-      listClients(this.#client),
-    ]);
-    this.send({
-      type: "channels",
-      channels: channels.map((c) => ({ id: c.id.toString(), parentID: c.parentID.toString(), name: c.name })),
-    });
-    this.send({
-      type: "clients",
-      clients: clients.map((c) => this.#toClientEntry(c, this.#client!.clientID(), false)),
-    });
+
+    if (this.#channels.size > 0) {
+      this.#sendChannelSnapshot();
+    } else if (!this.#channelQueryDenied && Date.now() >= this.#fallbackQueriesAt) {
+      try {
+        const channels = await listChannels(this.#client);
+        for (const channel of channels) {
+          const entry = {
+            id: channel.id.toString(),
+            parentID: channel.parentID.toString(),
+            name: channel.name,
+          };
+          if (entry.id !== "0" && entry.name) this.#channels.set(entry.id, entry);
+        }
+        this.#sendChannelSnapshot();
+      } catch (err) {
+        this.#channelQueryDenied = this.#isPermissionError(err);
+        this.#handleQueryError("channel list", err);
+      }
+    }
+
+    if (!this.#client) return;
+    if (this.#clients.size > 0 || this.#clientQueryDenied) {
+      this.#sendClientSnapshot();
+    } else if (Date.now() >= this.#fallbackQueriesAt) {
+      try {
+        const clients = await listClients(this.#client);
+        for (const client of clients) {
+          const entry = this.#toClientEntry(client, this.#client.clientID(), false);
+          this.#clients.set(entry.id, entry);
+        }
+        this.#sendClientSnapshot();
+      } catch (err) {
+        this.#clientQueryDenied = this.#isPermissionError(err);
+        this.#handleQueryError("client list", err);
+      }
+    }
   }
 
   async #serverInfo(): Promise<void> {
     if (!this.#client) return;
-    const rows = await this.#client.execCommandWithResponse("serverinfo", 5_000);
-    const r = rows[0] ?? {};
-    this.send({
-      type: "serverInfo",
-      info: {
+    if (this.#serverInfoCache) {
+      this.send({ type: "serverInfo", info: this.#serverInfoCache });
+      return;
+    }
+    if (this.#serverInfoQueryDenied) return;
+    if (Date.now() < this.#fallbackQueriesAt) return;
+
+    try {
+      const rows = await this.#client.execCommandWithResponse("serverinfo", 5_000);
+      const r = rows[0] ?? {};
+      const info = {
         name: tsUnescape(r["virtualserver_name"] ?? ""),
         uid: r["virtualserver_unique_identifier"] ?? "",
         version: r["virtualserver_version"] ?? "",
@@ -299,8 +466,34 @@ export class Session {
         maxClients: parseInt(r["virtualserver_maxclients"] ?? "0", 10),
         channelsOnline: parseInt(r["virtualserver_channelsonline"] ?? "0", 10),
         uptime: r["virtualserver_uptime"] ?? "0",
-      },
-    });
+      };
+      this.#serverInfoCache = info;
+      this.send({ type: "serverInfo", info });
+    } catch (err) {
+      this.#serverInfoQueryDenied = this.#isPermissionError(err);
+      this.#handleQueryError("server info", err);
+    }
+  }
+
+  #handleQueryError(operation: string, err: unknown): void {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[ts] ${operation} query failed:`, message);
+    if (this.#permissionWarned || !this.#isPermissionError(err)) return;
+
+    this.#permissionWarned = true;
+    console.warn("[ts] using the standard welcome-sequence data instead of privileged list queries");
+  }
+
+  #isPermissionError(err: unknown): boolean {
+    return (err instanceof Error ? err.message : String(err)).includes("insufficient client permissions");
+  }
+
+  #sendChannelSnapshot(): void {
+    this.send({ type: "channels", channels: [...this.#channels.values()] });
+  }
+
+  #sendClientSnapshot(): void {
+    this.send({ type: "clients", clients: [...this.#clients.values()] });
   }
 
   async #join(cid: string, password?: string): Promise<void> {
