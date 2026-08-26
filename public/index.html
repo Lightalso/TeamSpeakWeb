@@ -3,8 +3,24 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="theme-color" content="#131722" />
   <title>TeamSpeak Web</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <script>
+    (() => {
+      let mode = "auto";
+      try {
+        const saved = localStorage.getItem("tsweb_theme");
+        if (["auto", "light", "dark"].includes(saved)) mode = saved;
+      } catch (_) {}
+      const effective = mode === "auto"
+        ? (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+        : mode;
+      document.documentElement.dataset.themeMode = mode;
+      document.documentElement.dataset.theme = effective;
+    })();
+  </script>
   <link rel="stylesheet" href="/css/style.css" />
 </head>
 <body>
@@ -12,10 +28,22 @@
     <!-- Connect screen -->
     <section id="connect-screen" class="screen">
       <div class="card connect-card">
-        <h1>TeamSpeak Web</h1>
-        <p class="muted">Connect to a TeamSpeak 3/5/6 server from your browser.</p>
+        <div class="connect-header">
+          <div class="brand-lockup">
+            <span class="brand-mark" aria-hidden="true">TS</span>
+            <div><h1>TeamSpeak Web</h1><span class="brand-caption">Browser voice client</span></div>
+          </div>
+          <button class="theme-toggle" type="button" data-theme-toggle>
+            <span class="theme-icon" data-theme-icon aria-hidden="true">◐</span>
+            <span data-theme-label>Auto</span>
+          </button>
+        </div>
+        <div class="connect-intro">
+          <span class="eyebrow">Secure connection</span>
+          <p class="muted">Connect to a TeamSpeak 3/5/6 server directly from this browser.</p>
+        </div>
         <form id="connect-form">
-          <label>
+          <label class="field-wide">
             Server address
             <input id="f-addr" type="text" placeholder="ts.example.com:9987" required />
           </label>
@@ -35,11 +63,13 @@
             Channel password <span class="muted">(optional)</span>
             <input id="f-channelpw" type="password" placeholder="" />
           </label>
-          <button type="submit" id="connect-btn" class="btn-primary">Connect</button>
-          <p id="connect-error" class="error hidden"></p>
+          <div class="connect-actions field-wide">
+            <button type="submit" id="connect-btn" class="btn-primary">Connect to server</button>
+            <p id="connect-error" class="error hidden" role="alert"></p>
+          </div>
         </form>
-        <p class="muted small">
-          A fresh identity is generated for this browser automatically. Voice requires microphone permission.
+        <p class="identity-note muted small">
+          <span aria-hidden="true">◆</span> A private identity is generated for this browser. Voice requires microphone permission.
         </p>
       </div>
     </section>
@@ -47,13 +77,22 @@
     <!-- Main client view -->
     <section id="main-screen" class="screen hidden">
       <nav class="navbar">
-        <div class="brand">TeamSpeak Web</div>
-        <div class="server-status" id="server-status">
-          <span id="server-name">—</span>
-          <span class="badge" id="server-counts">0 / 0 online</span>
+        <div class="nav-primary">
+          <span class="brand-mark brand-mark-small" aria-hidden="true">TS</span>
+          <div class="server-status" id="server-status">
+            <span class="brand">TeamSpeak Web</span>
+            <span class="server-line"><i class="status-dot" aria-hidden="true"></i><span id="server-name">—</span></span>
+          </div>
         </div>
-        <div class="self-info" id="self-info">Not connected</div>
-        <button id="disconnect-btn" class="btn">Disconnect</button>
+        <div class="nav-actions">
+          <div class="self-info" id="self-info">Not connected</div>
+          <span class="badge" id="server-counts">0 / 0 online</span>
+          <button class="theme-toggle compact" type="button" data-theme-toggle>
+            <span class="theme-icon" data-theme-icon aria-hidden="true">◐</span>
+            <span data-theme-label>Auto</span>
+          </button>
+          <button id="disconnect-btn" class="btn danger">Disconnect</button>
+        </div>
       </nav>
 
       <div class="mobile-tabs" id="mobile-tabs">
@@ -64,20 +103,20 @@
 
       <div class="layout">
         <aside class="panel channels-panel active">
-          <h2>Channels</h2>
+          <div class="panel-heading"><span class="eyebrow">Server</span><h2>Channels</h2></div>
           <div id="channel-tree" class="channel-tree"></div>
         </aside>
 
         <main class="panel clients-panel">
           <div class="panel-header">
-            <h2 id="selected-channel-title">Clients</h2>
+            <div class="panel-heading"><span class="eyebrow">Now viewing</span><h2 id="selected-channel-title">Clients</h2></div>
             <button id="join-btn" class="btn" disabled>Join channel</button>
           </div>
           <div id="client-list" class="client-list"></div>
         </main>
 
         <aside class="panel chat-panel">
-          <h2>Chat</h2>
+          <div class="panel-heading"><span class="eyebrow">Channel messages</span><h2>Chat</h2></div>
           <div id="chat-log" class="chat-log"></div>
           <form id="chat-form" class="chat-form">
             <input id="chat-input" type="text" placeholder="Message channel…" autocomplete="off" />
@@ -87,18 +126,22 @@
       </div>
 
       <div class="voice-bar">
-        <button id="mic-btn" class="btn-voice" title="Toggle microphone">🎤 Mic</button>
-        <label class="ptt-toggle" title="Push-to-talk">
-          <input type="checkbox" id="ptt-toggle" /> PTT
-        </label>
-        <button id="ptt-btn" class="btn-voice" title="Hold to talk">Push to talk</button>
-        <div class="meter">
-          <span class="meter-label">Mic</span>
-          <div class="meter-track"><div id="mic-meter" class="meter-fill"></div></div>
+        <div class="voice-controls">
+          <button id="mic-btn" class="btn-voice" title="Toggle microphone">🎤 Mic</button>
+          <label class="ptt-toggle" title="Push-to-talk">
+            <input type="checkbox" id="ptt-toggle" /> <span>Push to talk</span>
+          </label>
+          <button id="ptt-btn" class="btn-voice" title="Hold to talk">Hold to talk</button>
         </div>
-        <div class="meter">
-          <span class="meter-label">Out</span>
-          <div class="meter-track"><div id="out-meter" class="meter-fill"></div></div>
+        <div class="meter-group">
+          <div class="meter">
+            <span class="meter-label">Mic</span>
+            <div class="meter-track"><div id="mic-meter" class="meter-fill"></div></div>
+          </div>
+          <div class="meter">
+            <span class="meter-label">Out</span>
+            <div class="meter-track"><div id="out-meter" class="meter-fill"></div></div>
+          </div>
         </div>
       </div>
     </section>

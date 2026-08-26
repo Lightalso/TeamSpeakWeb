@@ -1,5 +1,42 @@
 import { AudioEngine, clamp } from "./audio.js";
 
+const THEME_STORAGE_KEY = "tsweb_theme";
+const THEME_MODES = ["auto", "light", "dark"];
+const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+
+function readThemeMode() {
+  const bootMode = document.documentElement.dataset.themeMode;
+  if (THEME_MODES.includes(bootMode)) return bootMode;
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY);
+    return THEME_MODES.includes(saved) ? saved : "auto";
+  } catch (_) {
+    return "auto";
+  }
+}
+
+let themeMode = readThemeMode();
+
+function applyTheme(mode, persist = true) {
+  themeMode = THEME_MODES.includes(mode) ? mode : "auto";
+  const effective = themeMode === "auto" ? (systemTheme.matches ? "dark" : "light") : themeMode;
+  const definition = { auto: ["◐", "Auto"], light: ["☀", "Light"], dark: ["☾", "Dark"] }[themeMode];
+
+  document.documentElement.dataset.themeMode = themeMode;
+  document.documentElement.dataset.theme = effective;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute("content", effective === "dark" ? "#131722" : "#f2f4fa");
+  document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
+    button.querySelector("[data-theme-icon]").textContent = definition[0];
+    button.querySelector("[data-theme-label]").textContent = definition[1];
+    const detail = themeMode === "auto" ? `, currently ${effective}` : "";
+    button.title = `Theme: ${definition[1]}${detail}`;
+    button.setAttribute("aria-label", `${button.title}. Click to switch.`);
+  });
+  if (persist) {
+    try { localStorage.setItem(THEME_STORAGE_KEY, themeMode); } catch (_) {}
+  }
+}
+
 const state = {
   ws: null,
   connected: false,
@@ -48,6 +85,20 @@ const el = {
   micMeter: $("#mic-meter"),
   outMeter: $("#out-meter"),
 };
+
+document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
+  button.addEventListener("click", () => {
+    const currentIndex = THEME_MODES.indexOf(themeMode);
+    applyTheme(THEME_MODES[(currentIndex + 1) % THEME_MODES.length]);
+  });
+});
+
+const handleSystemThemeChange = () => {
+  if (themeMode === "auto") applyTheme("auto", false);
+};
+if (typeof systemTheme.addEventListener === "function") systemTheme.addEventListener("change", handleSystemThemeChange);
+else systemTheme.addListener(handleSystemThemeChange);
+applyTheme(themeMode, false);
 
 // ---- WebSocket ---------------------------------------------------------------
 
