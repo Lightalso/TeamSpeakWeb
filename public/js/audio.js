@@ -23,10 +23,18 @@ class StreamBuffer {
     this.maxBuffered = Math.round(sampleRate * MAX_BUFFER_MS / 1000);
   }
 
-  push(streamId, samples) {
+  push(streamId, samples, settings = {}) {
     let stream = this.streams.get(streamId);
     if (!stream) {
-      stream = { chunks: [], offset: 0, buffered: 0, started: false, target: this.baseTarget };
+      stream = {
+        chunks: [],
+        offset: 0,
+        buffered: 0,
+        started: false,
+        target: this.baseTarget,
+        volume: settings.volume ?? 1,
+        muted: settings.muted ?? false,
+      };
       this.streams.set(streamId, stream);
     }
     stream.chunks.push(samples);
@@ -44,10 +52,13 @@ class StreamBuffer {
       }
 
       let written = 0;
+      const gain = stream.muted ? 0 : stream.volume;
       while (written < output.length && stream.chunks.length) {
         const chunk = stream.chunks[0];
         const take = Math.min(output.length - written, chunk.length - stream.offset);
-        for (let i = 0; i < take; i++) output[written + i] += chunk[stream.offset + i];
+        if (gain > 0) {
+          for (let i = 0; i < take; i++) output[written + i] += chunk[stream.offset + i] * gain;
+        }
         written += take;
         stream.offset += take;
         stream.buffered -= take;
@@ -57,7 +68,7 @@ class StreamBuffer {
         }
       }
 
-      if (written > 0) active++;
+      if (written > 0 && gain > 0) active++;
       if (written < output.length) {
         stream.started = false;
         stream.target = Math.min(Math.round(this.sampleRate * 0.14), stream.target + Math.round(this.sampleRate * 0.02));
@@ -78,6 +89,13 @@ class StreamBuffer {
 
   remove(streamId) {
     this.streams.delete(streamId);
+  }
+
+  setStreamSettings(streamId, settings) {
+    const stream = this.streams.get(streamId);
+    if (!stream) return;
+    if (typeof settings.volume === "number") stream.volume = settings.volume;
+    if (typeof settings.muted === "boolean") stream.muted = settings.muted;
   }
 
   clear() {
@@ -111,6 +129,10 @@ export class AudioEngine {
     this.pttHeld = false;
     this.micLevel = 0;
     this.outLevel = 0;
+    this.micVolume = 1;
+    this.outputVolume = 1;
+    this._rawOutLevel = 0;
+    this._streamSettings = new Map();
     this._onMicFrame = null;
     this._micAcc = new Float32Array(FRAME_SAMPLES);
     this._micFill = 0;
@@ -126,6 +148,9 @@ export class AudioEngine {
     this.ctx = ctx;
     this._sourceRate = ctx.sampleRate;
     this._fallbackMixer = new StreamBuffer(ctx.sampleRate);
+    this._masterGain = ctx.createGain();
+    this._masterGain.gain.value = this.outputVolume;
+    this._masterGain.connect(ctx.destination);
 
     let workletsReady = false;
     if (ctx.audioWorklet && typeof AudioWorkletNode !== "undefined") {
@@ -137,9 +162,12 @@ export class AudioEngine {
           outputChannelCount: [1],
         });
         this._playNode.port.onmessage = (event) => {
-          if (event.data?.type === "level") this.outLevel = event.data.value;
+          if (event.data?.type === "level") {
+            this._rawOutLevel = event.data.value;
+            this.outLevel = Math.min(1, this._rawOutLevel * this.outputVolume);
+          }
         };
-        this._playNode.connect(ctx.destination);
+        this._playNode.connect(this._masterGain);
         workletsReady = true;
       } catch (err) {
         console.warn("AudioWorklet unavailable, using compatibility audio path:", err);
@@ -150,9 +178,10 @@ export class AudioEngine {
       this._playProc = ctx.createScriptProcessor(1024, 1, 1);
       this._playProc.onaudioprocess = (event) => {
         const output = event.outputBuffer.getChannelData(0);
-        this.outLevel = Math.min(1, this._fallbackMixer.mix(output) * 4);
+        this._rawOutLevel = Math.min(1, this._fallbackMixer.mix(output) * 4);
+        this.outLevel = Math.min(1, this._rawOutLevel * this.outputVolume);
       };
-      this._playProc.connect(ctx.destination);
+      this._playProc.connect(this._masterGain);
     }
 
     try {
@@ -217,7 +246,7 @@ export class AudioEngine {
   _processMic(input) {
     const samples = this._sourceRate === SAMPLE_RATE ? input : this._resample(input, this._sourceRate, SAMPLE_RATE);
     const level = rms(samples);
-    this.micLevel = Math.min(1, level * 8);
+    this.micLevel = Math.min(1, level * this.micVolume * 8);
     if (level > VAD_THRESHOLD) this._voiceActiveUntil = performance.now() + VAD_HANGOVER_MS;
     const gated = this.micEnabled && (this.ptt ? this.pttHeld : performance.now() < this._voiceActiveUntil);
 
@@ -228,7 +257,13 @@ export class AudioEngine {
       this._micFill += take;
       offset += take;
       if (this._micFill === FRAME_SAMPLES) {
-        if (gated && this._onMicFrame) this._onMicFrame(this._micAcc.slice());
+        if (gated && this._onMicFrame) {
+          const frame = this._micAcc.slice();
+          if (this.micVolume !== 1) {
+            for (let i = 0; i < frame.length; i++) frame[i] = clamp(frame[i] * this.micVolume);
+          }
+          this._onMicFrame(frame);
+        }
         this._micFill = 0;
       }
     }
@@ -250,18 +285,49 @@ export class AudioEngine {
   play(streamId, pcm) {
     if (!this.ctx) return;
     const samples = this.ctx.sampleRate === SAMPLE_RATE ? pcm : this._resample(pcm, SAMPLE_RATE, this.ctx.sampleRate);
-    if (this._playNode) this._playNode.port.postMessage({ type: "push", streamId, samples }, [samples.buffer]);
-    else this._fallbackMixer.push(streamId, samples);
+    const settings = this._streamSettings.get(streamId) ?? { volume: 1, muted: false };
+    if (this._playNode) this._playNode.port.postMessage({ type: "push", streamId, samples, ...settings }, [samples.buffer]);
+    else this._fallbackMixer.push(streamId, samples, settings);
+  }
+
+  setMicVolume(volume) {
+    this.micVolume = Math.max(0, Math.min(2, volume));
+  }
+
+  setOutputVolume(volume) {
+    this.outputVolume = Math.max(0, Math.min(2, volume));
+    this.outLevel = Math.min(1, this._rawOutLevel * this.outputVolume);
+    if (this._masterGain && this.ctx) {
+      this._masterGain.gain.setTargetAtTime(this.outputVolume, this.ctx.currentTime, 0.015);
+    }
+  }
+
+  setStreamVolume(streamId, volume) {
+    const current = this._streamSettings.get(streamId) ?? { volume: 1, muted: false };
+    const settings = { ...current, volume: Math.max(0, Math.min(2, volume)) };
+    this._streamSettings.set(streamId, settings);
+    this._playNode?.port.postMessage({ type: "settings", streamId, ...settings });
+    this._fallbackMixer?.setStreamSettings(streamId, settings);
+  }
+
+  setStreamMuted(streamId, muted) {
+    const current = this._streamSettings.get(streamId) ?? { volume: 1, muted: false };
+    const settings = { ...current, muted: Boolean(muted) };
+    this._streamSettings.set(streamId, settings);
+    this._playNode?.port.postMessage({ type: "settings", streamId, ...settings });
+    this._fallbackMixer?.setStreamSettings(streamId, settings);
   }
 
   removeStream(streamId) {
     if (this._playNode) this._playNode.port.postMessage({ type: "remove", streamId });
     this._fallbackMixer?.remove(streamId);
+    this._streamSettings.delete(streamId);
   }
 
   resetPlayback() {
     if (this._playNode) this._playNode.port.postMessage({ type: "clear" });
     this._fallbackMixer?.clear();
+    this._streamSettings.clear();
     this.outLevel = 0;
   }
 
@@ -273,6 +339,7 @@ export class AudioEngine {
       this._micMute?.disconnect();
       this._playNode?.disconnect();
       this._playProc?.disconnect();
+      this._masterGain?.disconnect();
       this._stream?.getTracks().forEach((track) => track.stop());
       void this.ctx?.close();
     } catch {}

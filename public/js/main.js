@@ -3,7 +3,49 @@ import { BrowserOpusCodec } from "./opus.js";
 
 const THEME_STORAGE_KEY = "tsweb_theme";
 const THEME_MODES = ["auto", "light", "dark"];
+const AUDIO_STORAGE_KEY = "tsweb_audio_preferences";
 const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+
+function normalizeVolume(value, fallback = 1) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Math.max(0, Math.min(2, number)) : fallback;
+}
+
+function readAudioPreferences() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(AUDIO_STORAGE_KEY) || "null");
+    return {
+      micVolume: normalizeVolume(saved?.micVolume),
+      outputVolume: normalizeVolume(saved?.outputVolume),
+      clients: saved?.clients && typeof saved.clients === "object" ? saved.clients : {},
+    };
+  } catch (_) {
+    return { micVolume: 1, outputVolume: 1, clients: {} };
+  }
+}
+
+const audioPreferences = readAudioPreferences();
+
+function saveAudioPreferences() {
+  try { localStorage.setItem(AUDIO_STORAGE_KEY, JSON.stringify(audioPreferences)); } catch (_) {}
+}
+
+function clientPreferenceKey(client) {
+  return client.uid || `nickname:${client.nickname}`;
+}
+
+function clientAudioPreferences(client) {
+  const saved = audioPreferences.clients[clientPreferenceKey(client)] ?? {};
+  return { volume: normalizeVolume(saved.volume), muted: Boolean(saved.muted) };
+}
+
+function persistClientAudioPreferences(client, settings) {
+  audioPreferences.clients[clientPreferenceKey(client)] = {
+    volume: normalizeVolume(settings.volume),
+    muted: Boolean(settings.muted),
+  };
+  saveAudioPreferences();
+}
 
 function readThemeMode() {
   const bootMode = document.documentElement.dataset.themeMode;
@@ -54,6 +96,8 @@ const state = {
 };
 
 const audio = new AudioEngine();
+audio.setMicVolume(audioPreferences.micVolume);
+audio.setOutputVolume(audioPreferences.outputVolume);
 let voiceCodecErrorShown = false;
 const voiceCodec = new BrowserOpusCodec({
   onEncoded: (packet) => sendOpusFrame(packet),
@@ -101,7 +145,32 @@ const el = {
   pttBtn: $("#ptt-btn"),
   micMeter: $("#mic-meter"),
   outMeter: $("#out-meter"),
+  micVolume: $("#mic-volume"),
+  micVolumeValue: $("#mic-volume-value"),
+  outputVolume: $("#output-volume"),
+  outputVolumeValue: $("#output-volume-value"),
 };
+
+function renderMasterVolumeControls() {
+  el.micVolume.value = String(Math.round(audioPreferences.micVolume * 100));
+  el.micVolumeValue.value = `${el.micVolume.value}%`;
+  el.outputVolume.value = String(Math.round(audioPreferences.outputVolume * 100));
+  el.outputVolumeValue.value = `${el.outputVolume.value}%`;
+}
+
+el.micVolume.addEventListener("input", () => {
+  audioPreferences.micVolume = normalizeVolume(Number(el.micVolume.value) / 100);
+  audio.setMicVolume(audioPreferences.micVolume);
+  el.micVolumeValue.value = `${el.micVolume.value}%`;
+});
+el.micVolume.addEventListener("change", saveAudioPreferences);
+el.outputVolume.addEventListener("input", () => {
+  audioPreferences.outputVolume = normalizeVolume(Number(el.outputVolume.value) / 100);
+  audio.setOutputVolume(audioPreferences.outputVolume);
+  el.outputVolumeValue.value = `${el.outputVolume.value}%`;
+});
+el.outputVolume.addEventListener("change", saveAudioPreferences);
+renderMasterVolumeControls();
 
 document.querySelectorAll("[data-theme-toggle]").forEach((button) => {
   button.addEventListener("click", () => {
@@ -221,6 +290,9 @@ function handleJson(msg) {
     }
     case "clientLeave":
       state.clients = state.clients.filter((client) => client.id !== msg.id);
+      state.talking.delete(msg.id);
+      clearTimeout(talkingTimeouts.get(msg.id));
+      talkingTimeouts.delete(msg.id);
       voiceCodec.removeDecoder(msg.id);
       audio.removeStream(msg.id);
       renderClients();
@@ -353,6 +425,9 @@ function onDisconnected() {
   state.connected = false;
   state.clients = [];
   state.channels = [];
+  state.talking.clear();
+  for (const timeout of talkingTimeouts.values()) clearTimeout(timeout);
+  talkingTimeouts.clear();
   voiceCodec.resetDecoders();
   audio.resetPlayback();
   el.mainScreen.classList.add("hidden");
@@ -459,6 +534,13 @@ function selectChannel(cid) {
 }
 
 function renderClients() {
+  for (const client of state.clients) {
+    if (client.isSelf || client.type !== 0) continue;
+    const settings = clientAudioPreferences(client);
+    audio.setStreamVolume(client.id, settings.volume);
+    audio.setStreamMuted(client.id, settings.muted);
+  }
+
   const inChannel = state.clients.filter((c) => c.cid === state.selectedCid);
   inChannel.sort((a, b) => b.isSelf - a.isSelf || a.nickname.localeCompare(b.nickname));
 
@@ -466,12 +548,62 @@ function renderClients() {
   for (const c of inChannel) {
     const item = document.createElement("div");
     item.className = "client-item" + (c.isSelf ? " self" : "");
+    item.dataset.clientId = String(c.id);
     if (state.talking.has(c.id)) item.classList.add("talking");
     const initial = (c.nickname[0] || "?").toUpperCase();
     item.innerHTML =
-      `<div class="avatar">${escapeHtml(initial)}</div>` +
-      `<div>${escapeHtml(c.nickname)}${c.isSelf ? ' <span class="muted">(you)</span>' : ""}</div>` +
-      `<div class="talk-dot"></div>`;
+      `<div class="client-summary">` +
+        `<div class="avatar">${escapeHtml(initial)}</div>` +
+        `<div class="client-name">${escapeHtml(c.nickname)}${c.isSelf ? ' <span class="muted">(you)</span>' : ""}</div>` +
+        `<div class="talk-dot" aria-hidden="true"></div>` +
+      `</div>`;
+
+    if (!c.isSelf && c.type === 0) {
+      const settings = clientAudioPreferences(c);
+      item.classList.toggle("client-muted", settings.muted);
+
+      const controls = document.createElement("div");
+      controls.className = "client-audio-controls";
+
+      const muteButton = document.createElement("button");
+      muteButton.type = "button";
+      muteButton.className = "client-mute";
+      const renderMute = () => {
+        muteButton.textContent = settings.muted ? "🔇" : "🔊";
+        muteButton.title = `${settings.muted ? "Unmute" : "Mute"} ${c.nickname}`;
+        muteButton.setAttribute("aria-label", muteButton.title);
+        muteButton.setAttribute("aria-pressed", String(settings.muted));
+        item.classList.toggle("client-muted", settings.muted);
+      };
+      muteButton.addEventListener("click", () => {
+        settings.muted = !settings.muted;
+        audio.setStreamMuted(c.id, settings.muted);
+        persistClientAudioPreferences(c, settings);
+        renderMute();
+      });
+      renderMute();
+
+      const volumeLabel = document.createElement("label");
+      volumeLabel.className = "client-volume";
+      const volumeInput = document.createElement("input");
+      volumeInput.type = "range";
+      volumeInput.min = "0";
+      volumeInput.max = "200";
+      volumeInput.step = "5";
+      volumeInput.value = String(Math.round(settings.volume * 100));
+      volumeInput.setAttribute("aria-label", `Volume for ${c.nickname}`);
+      const volumeValue = document.createElement("output");
+      volumeValue.value = `${volumeInput.value}%`;
+      volumeInput.addEventListener("input", () => {
+        settings.volume = normalizeVolume(Number(volumeInput.value) / 100);
+        volumeValue.value = `${volumeInput.value}%`;
+        audio.setStreamVolume(c.id, settings.volume);
+      });
+      volumeInput.addEventListener("change", () => persistClientAudioPreferences(c, settings));
+      volumeLabel.append(volumeInput, volumeValue);
+      controls.append(muteButton, volumeLabel);
+      item.appendChild(controls);
+    }
     el.clientList.appendChild(item);
   }
 }
@@ -511,7 +643,9 @@ function setTalking(clid, talking, fromVoice = false) {
   } else {
     state.talking.delete(clid);
   }
-  if (wasTalking !== state.talking.has(clid)) renderClients();
+  if (wasTalking !== state.talking.has(clid)) {
+    el.clientList.querySelector(`[data-client-id="${clid}"]`)?.classList.toggle("talking", talking);
+  }
   if (fromVoice && talking) {
     clearTimeout(talkingTimeouts.get(clid));
     talkingTimeouts.set(clid, setTimeout(() => setTalking(clid, false), 600));

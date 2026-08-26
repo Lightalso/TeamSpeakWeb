@@ -54,12 +54,31 @@ class TeamSpeakPlaybackProcessor extends AudioWorkletProcessor {
       this.streams.delete(message.streamId);
       return;
     }
+    if (message.type === "settings") {
+      const stream = this.streams.get(message.streamId);
+      if (stream) {
+        stream.volume = message.volume;
+        stream.muted = message.muted;
+      }
+      return;
+    }
     if (message.type !== "push" || !message.samples?.length) return;
 
     let stream = this.streams.get(message.streamId);
     if (!stream) {
-      stream = { chunks: [], offset: 0, buffered: 0, started: false, target: this.baseTarget };
+      stream = {
+        chunks: [],
+        offset: 0,
+        buffered: 0,
+        started: false,
+        target: this.baseTarget,
+        volume: message.volume ?? 1,
+        muted: message.muted ?? false,
+      };
       this.streams.set(message.streamId, stream);
+    } else {
+      stream.volume = message.volume ?? stream.volume;
+      stream.muted = message.muted ?? stream.muted;
     }
     stream.chunks.push(message.samples);
     stream.buffered += message.samples.length;
@@ -94,10 +113,13 @@ class TeamSpeakPlaybackProcessor extends AudioWorkletProcessor {
       }
 
       let written = 0;
+      const gain = stream.muted ? 0 : stream.volume;
       while (written < output.length && stream.chunks.length) {
         const chunk = stream.chunks[0];
         const take = Math.min(output.length - written, chunk.length - stream.offset);
-        for (let i = 0; i < take; i++) output[written + i] += chunk[stream.offset + i];
+        if (gain > 0) {
+          for (let i = 0; i < take; i++) output[written + i] += chunk[stream.offset + i] * gain;
+        }
         written += take;
         stream.offset += take;
         stream.buffered -= take;
@@ -107,7 +129,7 @@ class TeamSpeakPlaybackProcessor extends AudioWorkletProcessor {
         }
       }
 
-      if (written > 0) active++;
+      if (written > 0 && gain > 0) active++;
       if (written < output.length) {
         stream.started = false;
         stream.target = Math.min(this.maxTarget, stream.target + Math.round(sampleRate * 0.02));

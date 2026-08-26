@@ -134,14 +134,22 @@
           <button id="ptt-btn" class="btn-voice" title="Hold to talk">Hold to talk</button>
         </div>
         <div class="meter-group">
-          <div class="meter">
+          <label class="meter volume-control" for="mic-volume">
             <span class="meter-label">Mic</span>
-            <div class="meter-track"><div id="mic-meter" class="meter-fill"></div></div>
-          </div>
-          <div class="meter">
+            <span class="volume-slider">
+              <span class="meter-track" aria-hidden="true"><span id="mic-meter" class="meter-fill"></span></span>
+              <input id="mic-volume" type="range" min="0" max="200" step="5" value="100" aria-label="Microphone volume" />
+            </span>
+            <output id="mic-volume-value" for="mic-volume">100%</output>
+          </label>
+          <label class="meter volume-control" for="output-volume">
             <span class="meter-label">Out</span>
-            <div class="meter-track"><div id="out-meter" class="meter-fill"></div></div>
-          </div>
+            <span class="volume-slider">
+              <span class="meter-track" aria-hidden="true"><span id="out-meter" class="meter-fill"></span></span>
+              <input id="output-volume" type="range" min="0" max="200" step="5" value="100" aria-label="Master output volume" />
+            </span>
+            <output id="output-volume-value" for="output-volume">100%</output>
+          </label>
         </div>
       </div>
     </section>
