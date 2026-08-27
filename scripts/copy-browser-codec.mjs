@@ -1,4 +1,4 @@
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -12,5 +12,9 @@ copyFileSync(entry, join(target, "index.js"));
 copyFileSync(join(dist, "generated", "libopus.generated.mjs"), join(target, "generated", "libopus.generated.mjs"));
 copyFileSync(join(dist, "..", "LICENSE"), join(target, "LICENSE"));
 copyFileSync(join(dist, "..", "THIRD_PARTY_NOTICES.md"), join(target, "THIRD_PARTY_NOTICES.md"));
+writeFileSync(
+  join(here, "..", "public", "vendor", "android-runtime.js"),
+  "// Populated by scripts/build-mobile-runtime.mjs for standalone Android builds.\n",
+);
 
 console.log("Prepared browser Opus WASM files.");

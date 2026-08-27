@@ -218,6 +218,77 @@ docker run -d \
   teamspeak-web:latest
 ```
 
+### Android application package
+
+The repository includes a standalone Capacitor 8 Android project. The APK embeds
+the UI, Opus WebAssembly assets, a Node.js Mobile runtime, and the TeamSpeak
+session implementation. It connects directly from the phone to the TeamSpeak
+server over UDP and does **not** require a separately deployed TeamSpeak Web
+gateway.
+
+Requirements for building Android packages:
+
+- Node.js 22 or later.
+- Android Studio with its bundled JDK.
+- Android SDK Platform 36 and SDK tools. The generated app supports Android 7
+  (API 24) and later.
+- Internet access during the first Gradle build. The Node.js Mobile runtime
+  binaries are downloaded by the Android plugin on demand.
+- Network access from the phone to the selected TeamSpeak server's UDP port,
+  normally `9987`.
+
+Build a directly installable debug APK on Linux/macOS:
+
+```bash
+npm run android:apk
+```
+
+Windows PowerShell:
+
+```powershell
+npm run android:apk
+```
+
+The resulting file is copied to:
+
+```text
+artifacts/TeamSpeakWeb-debug.apk
+```
+
+Install it on an attached device with Android platform tools:
+
+```bash
+adb install -r artifacts/TeamSpeakWeb-debug.apk
+```
+
+To run on an emulator/device or open the native project in Android Studio:
+
+```bash
+npm run android:run
+npm run android:open
+```
+
+After frontend or session changes, run `npm run android:sync` before rebuilding.
+This command bundles the shared TeamSpeak session into `public/nodejs/` and then
+copies both the UI and embedded runtime project into the native application.
+
+For a signed release, first synchronize the app, then open Android Studio and
+select **Build → Generate Signed App Bundle or APK**. Choose an Android App
+Bundle (`.aab`) for Google Play or a signed APK for direct distribution. Update
+`versionCode` and `versionName` in `android/app/build.gradle` for every release,
+and keep the signing keystore outside the repository.
+
+The native manifest includes Internet, audio-settings, and microphone
+permissions. Android will ask for microphone access when voice is initialized.
+App identities, saved connection details, and preferences remain in the app's
+private WebView storage. Android backup is disabled to reduce the risk of
+copying saved TeamSpeak identities and passwords.
+
+The web-only `TSWEB_LOCK_SERVER` and `TSWEB_TEAMSPEAK_ADDRESS` variables do not
+apply to the standalone APK. The Android login form selects the TeamSpeak server
+that the phone connects to directly. Consequently, `127.0.0.1` means the Android
+device itself, not the machine hosting a web gateway.
+
 ### Configuration
 
 | Variable | Default | Purpose |
@@ -399,9 +470,13 @@ connect to a `wss://` gateway, not `ws://`.
 ### Project layout
 
 ```text
+android/        Capacitor Android Studio project and native manifest
+mobile/         Android event transport and embedded Node.js entry point
 public/         Browser UI, audio pipeline, and generated Opus WASM assets
-scripts/        Dependency preparation scripts
+scripts/        Dependency preparation and Android packaging scripts
 server/src/     HTTP/WebSocket gateway and TeamSpeak session implementation
+capacitor.config.ts  Android application identity and bundled web directory
+tsconfig.mobile.json Type checking for the embedded runtime and native transport
 dist/           Compiled server output (generated and gitignored)
 参考仓库/        Local reference source material (gitignored)
 ```
@@ -414,14 +489,19 @@ dist/           Compiled server output (generated and gitignored)
 | `npm start` | Run the TypeScript source once |
 | `npm run typecheck` | Check TypeScript without producing files |
 | `npm run build` | Compile the gateway into `dist/` |
+| `npm run prepare:android` | Bundle the embedded TeamSpeak runtime and Android transport |
+| `npm run android:sync` | Build mobile assets and copy them into the Android project |
+| `npm run android:run` | Synchronize and run on a selected device/emulator |
+| `npm run android:apk` | Build a debug APK in `artifacts/` |
+| `npm run android:open` | Open the native project in Android Studio |
 
 ### Current limitations
 
 - Only Opus TeamSpeak voice codecs (codec IDs 4 and 5) are decoded; legacy
   Speex/CELT audio is ignored.
 - Voice depends on browser WebAssembly and Web Audio support.
-- The browser still requires the Node.js UDP gateway; this is not a completely
-  serverless/static TeamSpeak client.
+- The browser build still requires the Node.js UDP gateway. Only the Android APK
+  embeds the TeamSpeak transport and runs without that gateway.
 
 ### License
 
@@ -630,6 +710,71 @@ docker run -d \
   teamspeak-web:latest
 ```
 
+### Android APP 打包
+
+仓库已经包含可独立运行的 Capacitor 8 Android 工程。APK 会内置界面、Opus
+WebAssembly 资源、Node.js Mobile 运行时和 TeamSpeak 会话实现。手机会通过 UDP
+直接连接 TeamSpeak 服务器，**不需要**另外部署 TeamSpeak Web 网关。
+
+Android 打包环境要求：
+
+- Node.js 22 或更高版本。
+- Android Studio 及其自带的 JDK。
+- Android SDK Platform 36 和 SDK 工具。生成的 APP 支持 Android 7（API 24）及
+  更高版本。
+- 首次执行 Gradle 构建时需要能够访问互联网，Android 插件会按需下载 Node.js
+  Mobile 运行时二进制文件。
+- 手机能够通过网络访问目标 TeamSpeak 服务器的 UDP 端口，默认端口为 `9987`。
+
+在 Linux/macOS 中生成可直接安装的调试 APK：
+
+```bash
+npm run android:apk
+```
+
+Windows PowerShell：
+
+```powershell
+npm run android:apk
+```
+
+生成结果会复制到：
+
+```text
+artifacts/TeamSpeakWeb-debug.apk
+```
+
+安装到通过 USB 连接的设备：
+
+```bash
+adb install -r artifacts/TeamSpeakWeb-debug.apk
+```
+
+在模拟器/设备中运行，或者使用 Android Studio 打开原生工程：
+
+```bash
+npm run android:run
+npm run android:open
+```
+
+修改前端或会话代码后，重新打包前执行 `npm run android:sync`。该命令会将共享的
+TeamSpeak 会话代码打包到 `public/nodejs/`，再把界面和内嵌运行项目一起复制到原生
+Android 工程中。
+
+如需生成签名正式版本，先同步 APP，然后打开 Android Studio，选择
+**Build → Generate Signed App Bundle or APK**。发布到 Google Play 应选择 Android
+App Bundle（`.aab`），直接分发则可选择签名 APK。每次发布前请修改
+`android/app/build.gradle` 中的 `versionCode` 和 `versionName`，并将签名密钥库
+保存在仓库之外。
+
+原生清单已经声明网络、音频设置和麦克风权限。初始化语音时，Android 会请求
+麦克风授权。APP 身份、连接记录和偏好设置会保留在应用的私有 WebView 存储中。
+Android 备份已关闭，以降低已保存 TeamSpeak 身份和密码被复制的风险。
+
+仅供网页版使用的 `TSWEB_LOCK_SERVER` 和 `TSWEB_TEAMSPEAK_ADDRESS` 不会影响
+独立 APK。Android 登录表单中填写的 TeamSpeak 地址由手机直接连接。因此在 APK
+中，`127.0.0.1` 表示 Android 设备自身，而不是部署网页网关的机器。
+
 ### 配置项
 
 | 环境变量 | 默认值 | 用途 |
@@ -801,9 +946,13 @@ IPv6 以及自定义端口仍然受支持。
 ### 项目结构
 
 ```text
+android/        Capacitor Android Studio 工程和原生清单
+mobile/         Android 事件传输层和内嵌 Node.js 入口
 public/         浏览器界面、音频管线和安装时生成的 Opus WASM 文件
-scripts/        依赖准备脚本
+scripts/        依赖准备和 Android 打包脚本
 server/src/     HTTP/WebSocket 网关与 TeamSpeak 会话实现
+capacitor.config.ts  Android 应用标识和网页资源目录配置
+tsconfig.mobile.json 内嵌运行模块和原生传输层的类型检查配置
 dist/           编译后的服务端文件（自动生成且不提交到 Git）
 参考仓库/        本地参考源码（不提交到 Git）
 ```
@@ -816,12 +965,18 @@ dist/           编译后的服务端文件（自动生成且不提交到 Git）
 | `npm start` | 直接运行一次 TypeScript 源码 |
 | `npm run typecheck` | 检查 TypeScript 类型但不生成文件 |
 | `npm run build` | 将网关编译到 `dist/` |
+| `npm run prepare:android` | 打包内嵌 TeamSpeak 运行模块和 Android 传输层 |
+| `npm run android:sync` | 构建移动端资源并同步到 Android 工程 |
+| `npm run android:run` | 同步后在选定的设备或模拟器中运行 |
+| `npm run android:apk` | 在 `artifacts/` 中生成调试 APK |
+| `npm run android:open` | 使用 Android Studio 打开原生工程 |
 
 ### 当前限制
 
 - 仅解码 TeamSpeak Opus 语音编码（编码 ID 4 和 5），忽略旧版 Speex/CELT 音频。
 - 语音功能依赖浏览器对 WebAssembly 和 Web Audio 的支持。
-- 浏览器仍然需要 Node.js UDP 网关，本项目不是完全无服务端的纯静态客户端。
+- 网页版仍然需要 Node.js UDP 网关；只有 Android APK 内嵌 TeamSpeak 传输模块，
+  不需要该网关即可独立运行。
 
 ### 许可证
 

@@ -9,7 +9,6 @@ import {
   clientMove,
   poke,
 } from "@honeybbq/teamspeak-client";
-import type { WebSocket } from "ws";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import {
@@ -24,6 +23,12 @@ import { attachWelcomeCapture } from "./welcome.js";
 
 const CODEC = 5; // Opus Music, matching the browser WebCodecs encoder.
 const IDENTITY_LEVEL = 8;
+
+export interface SessionTransport {
+  sendJson(message: ServerMessage): void;
+  sendBinary(data: Uint8Array): void;
+  close(): void;
+}
 
 /**
  * Resolve a `host[:port]` address to an explicit IPv4 literal, preserving the
@@ -93,7 +98,7 @@ export function tsUnescape(s: string): string {
  * Handles control messages and relays voice in both directions.
  */
 export class Session {
-  #ws: WebSocket;
+  #transport: SessionTransport;
   #serverAddress: string | undefined;
   #client: Client | null = null;
   #identityStr: string | undefined;
@@ -108,24 +113,24 @@ export class Session {
   #serverInfoCache: ServerInfo | null = null;
   #subscribedAll = false;
 
-  constructor(ws: WebSocket, serverAddress?: string) {
-    this.#ws = ws;
+  constructor(transport: SessionTransport, serverAddress?: string) {
+    this.#transport = transport;
     this.#serverAddress = serverAddress?.trim() || undefined;
   }
 
   send(msg: ServerMessage): void {
-    if (this.#closed || this.#ws.readyState !== this.#ws.OPEN) return;
-    this.#ws.send(JSON.stringify(msg));
+    if (this.#closed) return;
+    this.#transport.sendJson(msg);
   }
 
   sendSpeakerOpus(clid: number, codec: number, opus: Uint8Array): void {
-    if (this.#closed || this.#ws.readyState !== this.#ws.OPEN) return;
+    if (this.#closed) return;
     const frame = Buffer.allocUnsafe(4 + opus.length);
     frame[0] = SPEAKER_OPUS_FRAME;
     frame.writeUInt16BE(clid & 0xffff, 1);
     frame[3] = codec & 0xff;
     Buffer.from(opus).copy(frame, 4);
-    this.#ws.send(frame, { binary: true });
+    this.#transport.sendBinary(frame);
   }
 
   async handleMessage(msg: ClientMessage): Promise<void> {
@@ -136,7 +141,7 @@ export class Session {
           break;
         case "disconnect":
           await this.disconnect();
-          this.#ws.close();
+          this.#transport.close();
           break;
         case "refresh":
           await this.#refresh();
@@ -235,12 +240,12 @@ export class Session {
 
     client.on("disconnected", (err) => {
       this.send({ type: "disconnected", reason: err?.message });
-      this.#ws.close();
+      this.#transport.close();
     });
 
     client.on("kicked", (reason) => {
       this.send({ type: "disconnected", reason: `kicked: ${reason}` });
-      this.#ws.close();
+      this.#transport.close();
     });
 
     client.on("clientEnter", (info) => {

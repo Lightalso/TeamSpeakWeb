@@ -4,12 +4,14 @@
 # Dependencies and generated browser assets
 node_modules/
 public/vendor/
+public/nodejs/
 
 # Build, test, and TypeScript output
 dist/
 build/
 coverage/
 .nyc_output/
+artifacts/
 *.tsbuildinfo
 
 # Caches and temporary files

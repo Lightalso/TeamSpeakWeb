@@ -86,7 +86,18 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 wss.on("connection", (ws: WebSocket) => {
-  const session = new Session(ws, LOCK_SERVER ? TEAMSPEAK_ADDRESS : undefined);
+  const session = new Session(
+    {
+      sendJson: (message) => {
+        if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(message));
+      },
+      sendBinary: (data) => {
+        if (ws.readyState === ws.OPEN) ws.send(data, { binary: true });
+      },
+      close: () => ws.close(),
+    },
+    LOCK_SERVER ? TEAMSPEAK_ADDRESS : undefined,
+  );
 
   ws.on("message", (data, isBinary) => {
     if (isBinary) {

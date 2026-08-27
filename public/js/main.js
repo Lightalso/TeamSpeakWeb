@@ -545,6 +545,7 @@ function restoreLastConnection() {
 restoreLastConnection();
 
 async function loadRuntimeConfig() {
+  if (window.TSWEB_EMBEDDED_NODE) return;
   try {
     const configUrl = new URL(bridgeWebSocketUrl());
     configUrl.protocol = configUrl.protocol === "wss:" ? "https:" : "http:";
@@ -566,7 +567,11 @@ async function loadRuntimeConfig() {
 
 await loadRuntimeConfig();
 if (runtimeConfig.serverAddressLocked) {
-  el.addr.value = location.hostname || "localhost";
+  try {
+    el.addr.value = new URL(bridgeWebSocketUrl()).hostname || location.hostname || "localhost";
+  } catch (_) {
+    el.addr.value = location.hostname || "localhost";
+  }
   el.addr.readOnly = true;
   el.addr.setAttribute("aria-readonly", "true");
 }
@@ -645,7 +650,9 @@ function bridgeWebSocketUrl() {
 }
 
 function connect(addr, nickname, password, channel, channelpw) {
-  const ws = new WebSocket(bridgeWebSocketUrl());
+  const ws = window.TSWEB_CREATE_TRANSPORT
+    ? window.TSWEB_CREATE_TRANSPORT()
+    : new WebSocket(bridgeWebSocketUrl());
   ws.binaryType = "arraybuffer";
   state.ws = ws;
 

@@ -8,10 +8,13 @@
 参考仓库
 node_modules
 public/vendor
+public/nodejs
 dist
 build
 coverage
 .nyc_output
+android
+artifacts
 .cache
 tmp
 temp

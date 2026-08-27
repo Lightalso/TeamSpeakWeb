@@ -16,17 +16,27 @@
     "start": "tsx server/src/index.ts",
     "prebuild": "npm run prepare:client",
     "build": "tsc -p tsconfig.json",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.mobile.json",
+    "prepare:android": "npm run prepare:client && node scripts/build-mobile-runtime.mjs",
+    "android:sync": "npm run prepare:android && node --require ./scripts/capacitor-node-compat.cjs ./node_modules/@capacitor/cli/bin/capacitor sync android",
+    "android:open": "node --require ./scripts/capacitor-node-compat.cjs ./node_modules/@capacitor/cli/bin/capacitor open android",
+    "android:run": "npm run android:sync && node --require ./scripts/capacitor-node-compat.cjs ./node_modules/@capacitor/cli/bin/capacitor run android",
+    "android:apk": "npm run android:sync && node scripts/build-android.mjs",
     "postinstall": "node scripts/copy-browser-codec.mjs"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.0",
+    "@capawesome/capacitor-nodejs": "^0.1.0",
     "@honeybbq/teamspeak-client": "^0.2.3",
     "libopus-wasm": "^0.1.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
     "@types/node": "^22.10.0",
     "@types/ws": "^8.5.13",
+    "esbuild": "^0.25.10",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   }
