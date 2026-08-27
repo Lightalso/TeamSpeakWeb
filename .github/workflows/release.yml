@@ -53,7 +53,7 @@ jobs:
           cache-to: type=gha,mode=max
 
   android:
-    name: Android universal APK
+    name: Android universal release APK
     needs: docker
     runs-on: ubuntu-24.04
     permissions:
@@ -97,7 +97,29 @@ jobs:
       - name: Check source
         run: npm run typecheck
 
-      - name: Build universal debug APK
+      - name: Configure Android release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        shell: bash
+        run: |
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [[ -z "${!name}" ]]; then
+              echo "Required GitHub Actions secret $name is not configured."
+              exit 1
+            fi
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/teamspeakweb-release.jks"
+          chmod 600 "$RUNNER_TEMP/teamspeakweb-release.jks"
+
+      - name: Build universal release APK
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ runner.temp }}/teamspeakweb-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x android/gradlew
           npm run android:apk
@@ -107,8 +129,8 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
         shell: bash
         run: |
-          APK="TeamSpeakWeb-${RELEASE_TAG}-universal-debug.apk"
-          mv artifacts/TeamSpeakWeb-debug.apk "artifacts/$APK"
+          APK="TeamSpeakWeb-${RELEASE_TAG}-universal-release.apk"
+          mv artifacts/TeamSpeakWeb-release.apk "artifacts/$APK"
           cd artifacts
           sha256sum "$APK" > "$APK.sha256"
 
@@ -119,5 +141,5 @@ jobs:
           generate_release_notes: true
           make_latest: true
           files: |
-            artifacts/TeamSpeakWeb-${{ github.ref_name }}-universal-debug.apk
-            artifacts/TeamSpeakWeb-${{ github.ref_name }}-universal-debug.apk.sha256
+            artifacts/TeamSpeakWeb-${{ github.ref_name }}-universal-release.apk
+            artifacts/TeamSpeakWeb-${{ github.ref_name }}-universal-release.apk.sha256

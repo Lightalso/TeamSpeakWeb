@@ -30,6 +30,15 @@ export interface SessionTransport {
   close(): void;
 }
 
+/** Apply an authoritative TeamSpeak left-view event to a client snapshot. */
+export function applyClientLeave(
+  clients: Map<number, ClientEntry>,
+  id: number,
+  _reasonID: number,
+): boolean {
+  return clients.delete(id);
+}
+
 /**
  * Resolve a `host[:port]` address to an explicit IPv4 literal, preserving the
  * port. Already-numeric addresses (IPv4/IPv6) are returned unchanged, and a
@@ -259,11 +268,12 @@ export class Session {
     });
 
     client.on("clientLeave", (evt) => {
-      // Reasons 0-2 mean view/subscription changes rather than a definitive
-      // disconnect. Keeping the entry prevents clients in other channels from
-      // disappearing while channelsubscribeall is being established.
-      if (evt.reasonID <= 2) return;
-      this.#clients.delete(evt.id);
+      // A left-view notification is authoritative for the current client
+      // snapshot. TeamSpeak 6 can use low reason IDs when a client leaves a
+      // channel or disconnects, so filtering those IDs leaves ghost clients in
+      // the UI. A subsequent enter/move notification will add the client back
+      // if it merely crossed a subscription boundary.
+      applyClientLeave(this.#clients, evt.id, evt.reasonID);
       this.send({ type: "clientLeave", id: evt.id, reasonID: evt.reasonID, reasonMsg: tsUnescape(evt.reasonMsg) });
       this.#sendClientSnapshot();
     });

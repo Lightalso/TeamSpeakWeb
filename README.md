@@ -238,7 +238,21 @@ Requirements for building Android packages:
 - Network access from the phone to the selected TeamSpeak server's UDP port,
   normally `9987`.
 
-Build a directly installable debug APK on Linux/macOS:
+Create `android/keystore.properties` with the stable release keystore settings
+(this file and `*.jks` are ignored by Git):
+
+```properties
+storeFile=release-signing/teamspeakweb-release.jks
+storePassword=your-store-password
+keyAlias=teamspeakweb
+keyPassword=your-key-password
+```
+
+You can generate both ignored files once with `npm run android:signing:init`.
+The command refuses to overwrite an existing signing identity. Back up both
+files before relying on them for upgrades.
+
+Then build a directly installable, signed release APK on Linux/macOS:
 
 ```bash
 npm run android:apk
@@ -250,17 +264,20 @@ Windows PowerShell:
 npm run android:apk
 ```
 
-The resulting file is copied to:
+The signed result is copied to:
 
 ```text
-artifacts/TeamSpeakWeb-debug.apk
+artifacts/TeamSpeakWeb-release.apk
 ```
 
 Install it on an attached device with Android platform tools:
 
 ```bash
-adb install -r artifacts/TeamSpeakWeb-debug.apk
+adb install -r artifacts/TeamSpeakWeb-release.apk
 ```
+
+For a local development APK with the standard debug signature, use
+`npm run android:apk:debug`.
 
 To run on an emulator/device or open the native project in Android Studio:
 
@@ -273,11 +290,9 @@ After frontend or session changes, run `npm run android:sync` before rebuilding.
 This command bundles the shared TeamSpeak session into `public/nodejs/` and then
 copies both the UI and embedded runtime project into the native application.
 
-For a signed release, first synchronize the app, then open Android Studio and
-select **Build → Generate Signed App Bundle or APK**. Choose an Android App
-Bundle (`.aab`) for Google Play or a signed APK for direct distribution. Update
-`versionCode` and `versionName` in `android/app/build.gradle` for every release,
-and keep the signing keystore outside the repository.
+Keep the release keystore backed up securely. Every release must use the same
+key for Android to accept an in-place update. Update `versionCode` and
+`versionName` in `android/app/build.gradle` for every release.
 
 The native manifest includes Internet, audio-settings, and microphone
 permissions. Android will ask for microphone access when voice is initialized.
@@ -295,7 +310,7 @@ device itself, not the machine hosting a web gateway.
 Pushing a semantic `v*` tag runs `.github/workflows/release.yml`. The workflow
 publishes a `linux/amd64` image to
 `ghcr.io/<repository-owner>/<repository-name>:<tag>` and also updates the
-`latest` tag. After the image succeeds, it builds a universal Android debug APK
+`latest` tag. After the image succeeds, it builds a universal Android release APK
 for `armeabi-v7a`, `arm64-v8a`, and `x86_64`, creates a GitHub Release, and
 uploads the APK together with its SHA-256 checksum.
 
@@ -303,13 +318,14 @@ The tag must equal `v` plus the version in `package.json`. For the current
 version:
 
 ```bash
-git tag v0.0.1
-git push origin v0.0.1
+git tag v0.0.2
+git push origin v0.0.2
 ```
 
-No additional GitHub secret is required. The Android artifact uses a debug
-signature; configure a stable release keystore before distributing through an
-app store or relying on in-place upgrades between releases.
+The Android job requires these GitHub Actions secrets: `ANDROID_KEYSTORE_BASE64`
+(the complete JKS file encoded as one-line Base64),
+`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
+Keeping the same secret keystore makes all automated APKs upgrade-compatible.
 
 ### Configuration
 
@@ -514,7 +530,9 @@ dist/           Compiled server output (generated and gitignored)
 | `npm run prepare:android` | Bundle the embedded TeamSpeak runtime and Android transport |
 | `npm run android:sync` | Build mobile assets and copy them into the Android project |
 | `npm run android:run` | Synchronize and run on a selected device/emulator |
-| `npm run android:apk` | Build a debug APK in `artifacts/` |
+| `npm run android:signing:init` | Generate the fixed local release signing identity once |
+| `npm run android:apk` | Build a signed release APK in `artifacts/` |
+| `npm run android:apk:debug` | Build a development APK with the debug signature |
 | `npm run android:open` | Open the native project in Android Studio |
 
 ### Current limitations
@@ -749,7 +767,20 @@ Android 打包环境要求：
   Mobile 运行时二进制文件。
 - 手机能够通过网络访问目标 TeamSpeak 服务器的 UDP 端口，默认端口为 `9987`。
 
-在 Linux/macOS 中生成可直接安装的调试 APK：
+创建 `android/keystore.properties`，填写固定的 release 签名配置（该文件和
+`*.jks` 已被 Git 忽略）：
+
+```properties
+storeFile=release-signing/teamspeakweb-release.jks
+storePassword=你的密钥库密码
+keyAlias=teamspeakweb
+keyPassword=你的密钥密码
+```
+
+也可以执行一次 `npm run android:signing:init` 自动生成这两个忽略文件。该命令不会
+覆盖已有签名身份；在依赖其进行覆盖升级前，请先安全备份两个文件。
+
+然后在 Linux/macOS 中生成可直接安装的已签名 release APK：
 
 ```bash
 npm run android:apk
@@ -761,17 +792,19 @@ Windows PowerShell：
 npm run android:apk
 ```
 
-生成结果会复制到：
+签名后的生成结果会复制到：
 
 ```text
-artifacts/TeamSpeakWeb-debug.apk
+artifacts/TeamSpeakWeb-release.apk
 ```
 
 安装到通过 USB 连接的设备：
 
 ```bash
-adb install -r artifacts/TeamSpeakWeb-debug.apk
+adb install -r artifacts/TeamSpeakWeb-release.apk
 ```
+
+本地开发时如需使用标准 debug 签名，可执行 `npm run android:apk:debug`。
 
 在模拟器/设备中运行，或者使用 Android Studio 打开原生工程：
 
@@ -784,11 +817,9 @@ npm run android:open
 TeamSpeak 会话代码打包到 `public/nodejs/`，再把界面和内嵌运行项目一起复制到原生
 Android 工程中。
 
-如需生成签名正式版本，先同步 APP，然后打开 Android Studio，选择
-**Build → Generate Signed App Bundle or APK**。发布到 Google Play 应选择 Android
-App Bundle（`.aab`），直接分发则可选择签名 APK。每次发布前请修改
-`android/app/build.gradle` 中的 `versionCode` 和 `versionName`，并将签名密钥库
-保存在仓库之外。
+请安全备份 release 密钥库。Android 只有在后续版本继续使用同一签名时才允许覆盖
+安装。每次发布前还需更新 `android/app/build.gradle` 中的 `versionCode` 和
+`versionName`。
 
 原生清单已经声明网络、音频设置和麦克风权限。初始化语音时，Android 会请求
 麦克风授权。APP 身份、连接记录和偏好设置会保留在应用的私有 WebView 存储中。
@@ -803,18 +834,20 @@ Android 备份已关闭，以降低已保存 TeamSpeak 身份和密码被复制�
 推送符合语义化版本格式的 `v*` Tag 后，`.github/workflows/release.yml` 会自动运行。
 工作流会把 `linux/amd64` 镜像推送到
 `ghcr.io/<仓库所有者>/<仓库名称>:<Tag>`，并同时更新 `latest`；镜像构建成功后，
-还会构建包含 `armeabi-v7a`、`arm64-v8a` 和 `x86_64` 的 Android 通用 debug APK，
+还会构建包含 `armeabi-v7a`、`arm64-v8a` 和 `x86_64` 的 Android 通用 release APK，
 创建 GitHub Release，并上传 APK 及其 SHA-256 校验文件。
 
 Tag 必须是字母 `v` 加上 `package.json` 中的版本号。当前版本可执行：
 
 ```bash
-git tag v0.0.1
-git push origin v0.0.1
+git tag v0.0.2
+git push origin v0.0.2
 ```
 
-该流程不需要额外配置 GitHub Secret。Android 产物使用 debug 签名；如果要发布到
-应用商店，或者需要后续版本直接覆盖安装，应先配置固定的 release 签名密钥。
+Android 构建需要配置四个 GitHub Actions Secret：`ANDROID_KEYSTORE_BASE64`
+（完整 JKS 文件的单行 Base64）、`ANDROID_KEYSTORE_PASSWORD`、
+`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`。持续使用同一份 Secret 密钥库，
+自动构建的各版本 APK 才能直接覆盖升级。
 
 ### 配置项
 
@@ -1009,7 +1042,9 @@ dist/           编译后的服务端文件（自动生成且不提交到 Git）
 | `npm run prepare:android` | 打包内嵌 TeamSpeak 运行模块和 Android 传输层 |
 | `npm run android:sync` | 构建移动端资源并同步到 Android 工程 |
 | `npm run android:run` | 同步后在选定的设备或模拟器中运行 |
-| `npm run android:apk` | 在 `artifacts/` 中生成调试 APK |
+| `npm run android:signing:init` | 一次性生成固定的本地 release 签名身份 |
+| `npm run android:apk` | 在 `artifacts/` 中生成已签名 release APK |
+| `npm run android:apk:debug` | 生成使用 debug 签名的开发版 APK |
 | `npm run android:open` | 使用 Android Studio 打开原生工程 |
 
 ### 当前限制

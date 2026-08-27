@@ -39,6 +39,9 @@ pnpm-debug.log*
 *.key
 *.p12
 *.pfx
+*.jks
+*.keystore
+android/keystore.properties
 
 # Editors
 .idea/
