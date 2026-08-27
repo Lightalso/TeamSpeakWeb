@@ -9,6 +9,7 @@ const LAST_CONNECTION_STORAGE_KEY = "tsweb_last_connection";
 const MIC_MODES = ["open", "ptt", "muted"];
 const LANGUAGE_STORAGE_KEY = "tsweb_language";
 const LANGUAGES = ["en", "zh"];
+const COLUMN_WIDTHS_STORAGE_KEY = "tsweb_column_widths_v3";
 const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
 
 const TRANSLATIONS = {
@@ -78,9 +79,12 @@ const TRANSLATIONS = {
     "client.unmute": "Unmute {nickname}",
     "client.volume": "Volume for {nickname}",
     "client.volume_settings": "Volume",
+    "client.empty": "No clients in this channel",
     "text.pm": "PM",
     "text.server": "Server",
     "text.channel": "channel",
+    "layout.resize_channels": "Resize channels panel",
+    "layout.resize_chat": "Resize chat panel",
   },
   zh: {
     "brand.caption": "浏览器语音客户端",
@@ -148,9 +152,12 @@ const TRANSLATIONS = {
     "client.unmute": "取消静音 {nickname}",
     "client.volume": "{nickname} 的音量",
     "client.volume_settings": "音量",
+    "client.empty": "此频道暂无客户端",
     "text.pm": "私聊",
     "text.server": "服务器",
     "text.channel": "频道",
+    "layout.resize_channels": "调整频道栏宽度",
+    "layout.resize_chat": "调整聊天栏宽度",
   },
 };
 
@@ -331,7 +338,7 @@ function applyLanguage(nextLanguage, persist = true) {
     const selected = state.channels.find((channel) => channel.id === state.selectedCid);
     el.selectedChannelTitle.textContent = selected?.name || t("nav.clients");
   }
-  if (state.clients.length) renderClients();
+  if (state.connected) renderClients();
 }
 
 const state = {
@@ -376,6 +383,9 @@ const $ = (sel) => document.querySelector(sel);
 const el = {
   connectScreen: $("#connect-screen"),
   mainScreen: $("#main-screen"),
+  layout: $(".layout"),
+  channelsPanel: $(".channels-panel"),
+  chatPanel: $(".chat-panel"),
   form: $("#connect-form"),
   addr: $("#f-addr"),
   nickname: $("#f-nickname"),
@@ -401,6 +411,125 @@ const el = {
   outputVolume: $("#output-volume"),
   outputVolumeValue: $("#output-volume-value"),
 };
+
+const COLUMN_MINIMUMS = { channels: 200, chat: 240, center: 320 };
+const RESIZER_WIDTH = 8;
+
+function defaultColumnWidths() {
+  const availableWidth = Math.max(760, window.innerWidth - RESIZER_WIDTH);
+  return {
+    channels: availableWidth * 0.2,
+    chat: availableWidth * 0.5,
+  };
+}
+
+function readColumnWidths() {
+  const defaults = defaultColumnWidths();
+  try {
+    const saved = JSON.parse(localStorage.getItem(COLUMN_WIDTHS_STORAGE_KEY) || "null");
+    return {
+      channels: Math.max(COLUMN_MINIMUMS.channels, Math.min(2000, Number(saved?.channels) || defaults.channels)),
+      chat: Math.max(COLUMN_MINIMUMS.chat, Math.min(2000, Number(saved?.chat) || defaults.chat)),
+    };
+  } catch (_) {
+    return defaults;
+  }
+}
+
+const columnWidths = readColumnWidths();
+const columnResizers = [...document.querySelectorAll("[data-column-resizer]")];
+
+function applyColumnWidths() {
+  el.layout.style.setProperty("--channels-width", `${Math.round(columnWidths.channels)}px`);
+  el.layout.style.setProperty("--chat-width", `${Math.round(columnWidths.chat)}px`);
+  for (const handle of columnResizers) {
+    const side = handle.dataset.columnResizer;
+    handle.setAttribute("aria-valuenow", String(Math.round(columnWidths[side])));
+  }
+}
+
+function fitColumnWidths() {
+  if (isMobileLayout() || el.layout.clientWidth <= 0) return;
+  const available = Math.max(
+    COLUMN_MINIMUMS.channels + COLUMN_MINIMUMS.chat,
+    el.layout.clientWidth - RESIZER_WIDTH - COLUMN_MINIMUMS.center,
+  );
+  columnWidths.channels = Math.max(COLUMN_MINIMUMS.channels, columnWidths.channels);
+  columnWidths.chat = Math.max(COLUMN_MINIMUMS.chat, columnWidths.chat);
+  if (columnWidths.channels + columnWidths.chat > available) {
+    columnWidths.chat = Math.max(COLUMN_MINIMUMS.chat, available - columnWidths.channels);
+    columnWidths.channels = Math.max(COLUMN_MINIMUMS.channels, available - columnWidths.chat);
+  }
+  applyColumnWidths();
+}
+
+function saveColumnWidths() {
+  try { localStorage.setItem(COLUMN_WIDTHS_STORAGE_KEY, JSON.stringify(columnWidths)); } catch (_) {}
+}
+
+function resizeColumn(side, proposedWidth) {
+  const otherWidth = side === "channels"
+    ? el.chatPanel.getBoundingClientRect().width
+    : el.channelsPanel.getBoundingClientRect().width;
+  const minimum = COLUMN_MINIMUMS[side];
+  const maximum = Math.max(
+    minimum,
+    el.layout.clientWidth - RESIZER_WIDTH - COLUMN_MINIMUMS.center - otherWidth,
+  );
+  columnWidths[side] = Math.max(minimum, Math.min(maximum, proposedWidth));
+  applyColumnWidths();
+}
+
+let activeColumnResize = null;
+for (const handle of columnResizers) {
+  const side = handle.dataset.columnResizer;
+  handle.addEventListener("pointerdown", (event) => {
+    if (isMobileLayout() || event.button !== 0) return;
+    const panel = side === "channels" ? el.channelsPanel : el.chatPanel;
+    activeColumnResize = {
+      handle,
+      pointerId: event.pointerId,
+      side,
+      startX: event.clientX,
+      startWidth: panel.getBoundingClientRect().width,
+    };
+    handle.setPointerCapture(event.pointerId);
+    document.body.classList.add("column-resizing");
+    event.preventDefault();
+  });
+  handle.addEventListener("pointermove", (event) => {
+    if (!activeColumnResize || activeColumnResize.pointerId !== event.pointerId) return;
+    const movement = event.clientX - activeColumnResize.startX;
+    const direction = activeColumnResize.side === "channels" ? 1 : -1;
+    resizeColumn(activeColumnResize.side, activeColumnResize.startWidth + movement * direction);
+  });
+  const finishResize = (event) => {
+    if (!activeColumnResize || activeColumnResize.pointerId !== event.pointerId) return;
+    activeColumnResize = null;
+    document.body.classList.remove("column-resizing");
+    saveColumnWidths();
+  };
+  handle.addEventListener("pointerup", finishResize);
+  handle.addEventListener("pointercancel", finishResize);
+  handle.addEventListener("dblclick", () => {
+    columnWidths[side] = defaultColumnWidths()[side];
+    fitColumnWidths();
+    saveColumnWidths();
+  });
+  handle.addEventListener("keydown", (event) => {
+    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+    const step = event.shiftKey ? 30 : 10;
+    const horizontalDirection = event.key === "ArrowRight" ? 1 : -1;
+    const widthDirection = side === "channels" ? horizontalDirection : -horizontalDirection;
+    const panel = side === "channels" ? el.channelsPanel : el.chatPanel;
+    resizeColumn(side, panel.getBoundingClientRect().width + widthDirection * step);
+    saveColumnWidths();
+    event.preventDefault();
+  });
+}
+
+applyColumnWidths();
+window.addEventListener("resize", fitColumnWidths);
 
 function restoreLastConnection() {
   if (lastConnection) {
@@ -792,6 +921,7 @@ function isTyping(target) {
 function showMain() {
   el.connectScreen.classList.add("hidden");
   el.mainScreen.classList.remove("hidden");
+  fitColumnWidths();
   el.serverName.textContent = state.serverInfo?.name || lastConnection?.serverName || el.addr.value.trim() || t("server.fallback");
   requestRefresh();
   send({ type: "serverInfo" });
@@ -918,10 +1048,12 @@ function selectChannel(cid) {
 }
 
 function updateJoinButton() {
-  el.joinBtn.disabled = !state.connected
-    || !state.selectedCid
-    || state.selectedCid === state.cid
-    || pendingJoinCid !== null;
+  const available = state.connected
+    && Boolean(state.selectedCid)
+    && state.selectedCid !== state.cid
+    && pendingJoinCid === null;
+  el.joinBtn.disabled = !available;
+  el.mainScreen.classList.toggle("join-available", available);
 }
 
 function isMobileLayout() {
@@ -948,6 +1080,13 @@ function renderClients() {
   inChannel.sort((a, b) => b.isSelf - a.isSelf || a.nickname.localeCompare(b.nickname));
 
   el.clientList.innerHTML = "";
+  if (inChannel.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "client-empty-state";
+    empty.textContent = t("client.empty");
+    el.clientList.appendChild(empty);
+    return;
+  }
   for (const c of inChannel) {
     const item = document.createElement("div");
     item.className = "client-item" + (c.isSelf ? " self" : "");
@@ -1063,6 +1202,7 @@ function escapeHtml(s) {
 function switchMobileTab(panelId) {
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.classList.contains(panelId)));
   document.querySelectorAll(".mobile-tab").forEach((t) => t.classList.toggle("active", t.dataset.panel === panelId));
+  el.mainScreen.dataset.mobilePanel = panelId;
 }
 
 document.querySelectorAll(".mobile-tab").forEach((tab) => {

@@ -82,7 +82,7 @@
     </section>
 
     <!-- Main client view -->
-    <section id="main-screen" class="screen hidden">
+    <section id="main-screen" class="screen hidden" data-mobile-panel="channels-panel">
       <nav class="navbar">
         <div class="nav-primary">
           <div class="server-status" id="server-status">
@@ -111,11 +111,14 @@
           <div id="channel-tree" class="channel-tree"></div>
         </aside>
 
+        <div class="column-resizer" data-column-resizer="channels" role="separator" aria-orientation="vertical" aria-valuemin="200" aria-valuemax="2000" tabindex="0" data-i18n-aria="layout.resize_channels"></div>
+
         <main class="panel clients-panel">
           <div class="panel-heading"><h2 id="selected-channel-title" data-i18n="nav.clients">Clients</h2></div>
-          <button id="join-btn" class="btn mobile-join-button" disabled data-i18n="action.join">Join</button>
           <div id="client-list" class="client-list"></div>
         </main>
+
+        <div class="column-resizer" data-column-resizer="chat" role="separator" aria-orientation="vertical" aria-valuemin="240" aria-valuemax="2000" tabindex="0" data-i18n-aria="layout.resize_chat"></div>
 
         <aside class="panel chat-panel">
           <div class="panel-heading"><h2 data-i18n="nav.chat">Chat</h2></div>
@@ -125,6 +128,10 @@
             <button type="submit" class="btn" data-i18n="chat.send">Send</button>
           </form>
         </aside>
+      </div>
+
+      <div class="mobile-join-bar">
+        <button id="join-btn" class="btn mobile-join-button" disabled data-i18n="action.join">Join</button>
       </div>
 
       <div class="voice-bar">
