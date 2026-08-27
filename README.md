@@ -2,6 +2,12 @@
 
 [English](#english) · [简体中文](#简体中文)
 
+https://github.com/Lightalso/TeamSpeakWeb/blob/main/screenshots/QQ20260827-154237.png
+https://github.com/Lightalso/TeamSpeakWeb/blob/main/screenshots/QQ20260827-154413.png
+https://github.com/Lightalso/TeamSpeakWeb/blob/main/screenshots/QQ20260827-154603.png
+https://github.com/Lightalso/TeamSpeakWeb/blob/main/screenshots/QQ20260827-154626.png
+https://github.com/Lightalso/TeamSpeakWeb/blob/main/screenshots/QQ20260827-154649.png
+
 ## English
 
 A lightweight browser client for TeamSpeak 3, 5, and 6 servers. It supports
