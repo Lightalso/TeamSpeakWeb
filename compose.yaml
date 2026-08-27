@@ -1,0 +1,18 @@
+services:
+  teamspeak-web:
+    image: teamspeak-web:local
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: teamspeak-web
+    restart: unless-stopped
+    init: true
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      TSWEB_LOCK_SERVER: "${TSWEB_LOCK_SERVER:-false}"
+      TSWEB_TEAMSPEAK_ADDRESS: "${TSWEB_TEAMSPEAK_ADDRESS:-host.docker.internal:9987}"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${TSWEB_BIND:-0.0.0.0}:${TSWEB_PORT:-3000}:3000"

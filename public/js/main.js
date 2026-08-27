@@ -11,6 +11,7 @@ const LANGUAGE_STORAGE_KEY = "tsweb_language";
 const LANGUAGES = ["en", "zh"];
 const COLUMN_WIDTHS_STORAGE_KEY = "tsweb_column_widths_v3";
 const systemTheme = window.matchMedia("(prefers-color-scheme: dark)");
+const runtimeConfig = { serverAddressLocked: false };
 
 const TRANSLATIONS = {
   en: {
@@ -542,6 +543,33 @@ function restoreLastConnection() {
 }
 
 restoreLastConnection();
+
+async function loadRuntimeConfig() {
+  try {
+    const configUrl = new URL(bridgeWebSocketUrl());
+    configUrl.protocol = configUrl.protocol === "wss:" ? "https:" : "http:";
+    configUrl.pathname = "/api/config";
+    configUrl.search = "";
+    configUrl.hash = "";
+    const response = await fetch(configUrl, {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!response.ok) return;
+    const config = await response.json();
+    runtimeConfig.serverAddressLocked = config?.serverAddressLocked === true;
+  } catch (_) {
+    // Older or separately hosted gateways may not expose runtime configuration.
+  }
+}
+
+await loadRuntimeConfig();
+if (runtimeConfig.serverAddressLocked) {
+  el.addr.value = location.hostname || "localhost";
+  el.addr.readOnly = true;
+  el.addr.setAttribute("aria-readonly", "true");
+}
 
 function persistConnectionForm() {
   const address = el.addr.value.trim();

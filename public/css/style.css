@@ -469,6 +469,7 @@ input[type="text"], input[type="password"] {
 input::placeholder { color: var(--site-text); opacity: 0.72; }
 input:hover { border-color: var(--site-scrollbar); }
 input[type="text"]:focus, input[type="password"]:focus { border-color: var(--site-secondary); }
+input[readonly] { color: var(--site-text); background: color-mix(in srgb, var(--input) 78%, var(--channel)); cursor: not-allowed; }
 .btn, .btn-primary, .btn-voice, .theme-toggle, .language-toggle { min-height: 36px; padding: 7px 12px; border-radius: 4px; font-weight: 600; }
 .btn { color: var(--site-text-bright); background: var(--channel); }
 .btn-primary { background: var(--site-secondary); }

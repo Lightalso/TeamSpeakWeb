@@ -12,6 +12,8 @@ const PORT = Number(process.env["PORT"] ?? 3000);
 const HOST = process.env["HOST"] ?? "0.0.0.0";
 const SSL_CERT = process.env["SSL_CERT"];
 const SSL_KEY = process.env["SSL_KEY"];
+const LOCK_SERVER = /^(?:1|true|yes|on)$/i.test(process.env["TSWEB_LOCK_SERVER"]?.trim() ?? "");
+const TEAMSPEAK_ADDRESS = process.env["TSWEB_TEAMSPEAK_ADDRESS"]?.trim() || "127.0.0.1:9987";
 
 const __dirname = fileURLToPath(new URL(".", import.meta.url));
 const PUBLIC_DIR = normalize(join(__dirname, "..", "..", "public"));
@@ -49,6 +51,17 @@ async function serveStatic(url: string): Promise<{ status: number; body: Buffer;
 }
 
 async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  if ((req.url ?? "").split("?")[0] === "/api/config") {
+    const body = Buffer.from(JSON.stringify({ serverAddressLocked: LOCK_SERVER }));
+    res.writeHead(200, {
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "no-store",
+      "Content-Length": body.length,
+      "Content-Type": "application/json; charset=utf-8",
+    });
+    res.end(body);
+    return;
+  }
   const served = await serveStatic(req.url ?? "/");
   if (served) {
     res.writeHead(served.status, { "Content-Type": served.type });
@@ -73,7 +86,7 @@ server.on("upgrade", (req, socket, head) => {
 });
 
 wss.on("connection", (ws: WebSocket) => {
-  const session = new Session(ws);
+  const session = new Session(ws, LOCK_SERVER ? TEAMSPEAK_ADDRESS : undefined);
 
   ws.on("message", (data, isBinary) => {
     if (isBinary) {
@@ -99,4 +112,5 @@ wss.on("connection", (ws: WebSocket) => {
 server.listen(PORT, HOST, () => {
   const scheme = SSL_CERT && SSL_KEY ? "https" : "http";
   console.log(`TeamSpeak Web bridge listening on ${scheme}://${HOST}:${PORT}`);
+  if (LOCK_SERVER) console.log(`[config] TeamSpeak server is locked to ${TEAMSPEAK_ADDRESS}`);
 });

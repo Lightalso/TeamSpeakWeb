@@ -94,6 +94,7 @@ export function tsUnescape(s: string): string {
  */
 export class Session {
   #ws: WebSocket;
+  #serverAddress: string | undefined;
   #client: Client | null = null;
   #identityStr: string | undefined;
   #closed = false;
@@ -107,8 +108,9 @@ export class Session {
   #serverInfoCache: ServerInfo | null = null;
   #subscribedAll = false;
 
-  constructor(ws: WebSocket) {
+  constructor(ws: WebSocket, serverAddress?: string) {
     this.#ws = ws;
+    this.#serverAddress = serverAddress?.trim() || undefined;
   }
 
   send(msg: ServerMessage): void {
@@ -196,7 +198,7 @@ export class Session {
     // Resolve hostnames to an IPv4 address up-front. A hostname with both A
     // and AAAA records can make the library's `udp4` socket re-resolve to IPv6
     // during sends, which fails with ENETUNREACH on hosts without IPv6 routing.
-    const addr = await resolveIpv4(msg.addr);
+    const addr = await resolveIpv4(this.#serverAddress ?? msg.addr);
 
     const client = new Client(identity, addr, msg.nickname, {
       serverPassword: msg.serverPassword ?? "",
