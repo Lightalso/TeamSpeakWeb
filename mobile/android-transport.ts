@@ -22,6 +22,24 @@ function decodeBase64(value: string): ArrayBuffer {
   return bytes.buffer;
 }
 
+function decodeVoiceBatch(value: string): ArrayBuffer[] {
+  const batch = new Uint8Array(decodeBase64(value));
+  if (batch.length < 2) return [];
+  const view = new DataView(batch.buffer, batch.byteOffset, batch.byteLength);
+  const count = view.getUint16(0, false);
+  const frames: ArrayBuffer[] = [];
+  let offset = 2;
+  for (let index = 0; index < count; index++) {
+    if (offset + 2 > batch.length) return [];
+    const length = view.getUint16(offset, false);
+    offset += 2;
+    if (length === 0 || offset + length > batch.length) return [];
+    frames.push(batch.slice(offset, offset + length).buffer);
+    offset += length;
+  }
+  return offset === batch.length ? frames : [];
+}
+
 class EmbeddedNodeSocket {
   binaryType = "arraybuffer";
   readyState = CONNECTING;
@@ -41,8 +59,8 @@ class EmbeddedNodeSocket {
         const value = event.args[0];
         if (event.eventName === "server-message") {
           this.onmessage?.({ data: JSON.stringify(value) });
-        } else if (event.eventName === "speaker-opus" && typeof value === "string") {
-          this.onmessage?.({ data: decodeBase64(value) });
+        } else if (event.eventName === "speaker-opus-batch" && typeof value === "string") {
+          for (const frame of decodeVoiceBatch(value)) this.onmessage?.({ data: frame });
         } else if (event.eventName === "transport-closed") {
           this.#finishClose();
         } else if (event.eventName === "runtime-error") {

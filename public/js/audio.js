@@ -137,6 +137,8 @@ export class AudioEngine {
     this._micAcc = new Float32Array(FRAME_SAMPLES);
     this._micFill = 0;
     this._voiceActiveUntil = 0;
+    this._playQueue = [];
+    this._playFlushScheduled = false;
   }
 
   async init() {
@@ -286,8 +288,21 @@ export class AudioEngine {
     if (!this.ctx) return;
     const samples = this.ctx.sampleRate === SAMPLE_RATE ? pcm : this._resample(pcm, SAMPLE_RATE, this.ctx.sampleRate);
     const settings = this._streamSettings.get(streamId) ?? { volume: 1, muted: false };
-    if (this._playNode) this._playNode.port.postMessage({ type: "push", streamId, samples, ...settings }, [samples.buffer]);
-    else this._fallbackMixer.push(streamId, samples, settings);
+    if (this._playNode) {
+      this._playQueue.push({ type: "push", streamId, samples, ...settings });
+      if (!this._playFlushScheduled) {
+        this._playFlushScheduled = true;
+        queueMicrotask(() => this._flushPlayQueue());
+      }
+    } else this._fallbackMixer.push(streamId, samples, settings);
+  }
+
+  _flushPlayQueue() {
+    this._playFlushScheduled = false;
+    if (!this._playNode || this._playQueue.length === 0) return;
+    const items = this._playQueue;
+    this._playQueue = [];
+    this._playNode.port.postMessage({ type: "pushBatch", items }, items.map((item) => item.samples.buffer));
   }
 
   setMicVolume(volume) {
@@ -325,6 +340,7 @@ export class AudioEngine {
   }
 
   resetPlayback() {
+    this._playQueue.length = 0;
     if (this._playNode) this._playNode.port.postMessage({ type: "clear" });
     this._fallbackMixer?.clear();
     this._streamSettings.clear();

@@ -16,10 +16,48 @@ const { app, channel } = require("bridge") as {
   };
 };
 
+const VOICE_BATCH_DELAY_MS = 8;
+const VOICE_BATCH_MAX_BYTES = 48 * 1024;
+let voiceFrames: Buffer[] = [];
+let voiceBytes = 0;
+let voiceTimer: ReturnType<typeof setTimeout> | null = null;
+
+function flushVoiceFrames(): void {
+  if (voiceTimer) clearTimeout(voiceTimer);
+  voiceTimer = null;
+  if (voiceFrames.length === 0) return;
+
+  const batch = Buffer.allocUnsafe(2 + voiceFrames.length * 2 + voiceBytes);
+  batch.writeUInt16BE(voiceFrames.length, 0);
+  let offset = 2;
+  for (const frame of voiceFrames) {
+    batch.writeUInt16BE(frame.length, offset);
+    offset += 2;
+    frame.copy(batch, offset);
+    offset += frame.length;
+  }
+  voiceFrames = [];
+  voiceBytes = 0;
+  channel.post("speaker-opus-batch", batch.toString("base64"));
+}
+
+function queueVoiceFrame(data: Uint8Array): void {
+  const frame = Buffer.from(data);
+  if (voiceFrames.length >= 0xffff || voiceBytes + frame.length > VOICE_BATCH_MAX_BYTES) {
+    flushVoiceFrames();
+  }
+  voiceFrames.push(frame);
+  voiceBytes += frame.length;
+  if (!voiceTimer) voiceTimer = setTimeout(flushVoiceFrames, VOICE_BATCH_DELAY_MS);
+}
+
 const session = new Session({
   sendJson: (message) => channel.post("server-message", message),
-  sendBinary: (data) => channel.post("speaker-opus", Buffer.from(data).toString("base64")),
-  close: () => channel.post("transport-closed"),
+  sendBinary: queueVoiceFrame,
+  close: () => {
+    flushVoiceFrames();
+    channel.post("transport-closed");
+  },
 });
 
 channel.on("client-message", (message) => {

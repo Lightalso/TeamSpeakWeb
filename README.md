@@ -38,7 +38,8 @@ TeamSpeak client session.
 - Connect to TeamSpeak 3, 5, and 6 servers, including password-protected servers
   and channels.
 - Browse channels and clients, move between channels, and use channel text chat.
-- Low-latency Opus audio based on WebAssembly and AudioWorklet.
+- Low-latency Opus audio with dedicated WebAssembly codec workers, adaptive
+  jitter buffering, batched Android bridge transport, and AudioWorklet mixing.
 - Microphone, push-to-talk, output volume, and per-client volume controls.
 - English and Simplified Chinese interfaces with light, dark, and automatic
   themes.
@@ -288,6 +289,27 @@ The web-only `TSWEB_LOCK_SERVER` and `TSWEB_TEAMSPEAK_ADDRESS` variables do not
 apply to the standalone APK. The Android login form selects the TeamSpeak server
 that the phone connects to directly. Consequently, `127.0.0.1` means the Android
 device itself, not the machine hosting a web gateway.
+
+### Automated GitHub releases
+
+Pushing a semantic `v*` tag runs `.github/workflows/release.yml`. The workflow
+publishes a `linux/amd64` image to
+`ghcr.io/<repository-owner>/<repository-name>:<tag>` and also updates the
+`latest` tag. After the image succeeds, it builds a universal Android debug APK
+for `armeabi-v7a`, `arm64-v8a`, and `x86_64`, creates a GitHub Release, and
+uploads the APK together with its SHA-256 checksum.
+
+The tag must equal `v` plus the version in `package.json`. For the current
+version:
+
+```bash
+git tag v0.0.1
+git push origin v0.0.1
+```
+
+No additional GitHub secret is required. The Android artifact uses a debug
+signature; configure a stable release keystore before distributing through an
+app store or relying on in-place upgrades between releases.
 
 ### Configuration
 
@@ -541,7 +563,8 @@ TeamSpeak 3 / 5 / 6 服务器
 
 - 连接 TeamSpeak 3、5、6 服务器，包括设置了密码的服务器和频道。
 - 浏览频道和客户端、切换频道并使用频道文字聊天。
-- 基于 WebAssembly 和 AudioWorklet 的低延迟 Opus 音频。
+- 使用独立 WebAssembly 编解码 Worker、自适应抖动缓冲、Android 语音合批传输和
+  AudioWorklet 混音的低延迟 Opus 音频。
 - 麦克风、按键说话、总输出音量和单客户端音量控制。
 - 英文/简体中文界面，以及日间、夜间和自动主题。
 - 桌面端可拖动分栏和移动端页签布局。
@@ -774,6 +797,24 @@ Android 备份已关闭，以降低已保存 TeamSpeak 身份和密码被复制�
 仅供网页版使用的 `TSWEB_LOCK_SERVER` 和 `TSWEB_TEAMSPEAK_ADDRESS` 不会影响
 独立 APK。Android 登录表单中填写的 TeamSpeak 地址由手机直接连接。因此在 APK
 中，`127.0.0.1` 表示 Android 设备自身，而不是部署网页网关的机器。
+
+### GitHub 自动发布
+
+推送符合语义化版本格式的 `v*` Tag 后，`.github/workflows/release.yml` 会自动运行。
+工作流会把 `linux/amd64` 镜像推送到
+`ghcr.io/<仓库所有者>/<仓库名称>:<Tag>`，并同时更新 `latest`；镜像构建成功后，
+还会构建包含 `armeabi-v7a`、`arm64-v8a` 和 `x86_64` 的 Android 通用 debug APK，
+创建 GitHub Release，并上传 APK 及其 SHA-256 校验文件。
+
+Tag 必须是字母 `v` 加上 `package.json` 中的版本号。当前版本可执行：
+
+```bash
+git tag v0.0.1
+git push origin v0.0.1
+```
+
+该流程不需要额外配置 GitHub Secret。Android 产物使用 debug 签名；如果要发布到
+应用商店，或者需要后续版本直接覆盖安装，应先配置固定的 release 签名密钥。
 
 ### 配置项
 

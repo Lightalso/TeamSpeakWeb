@@ -757,8 +757,7 @@ function handleJson(msg) {
     case "clientLeave":
       state.clients = state.clients.filter((client) => client.id !== msg.id);
       state.talking.delete(msg.id);
-      clearTimeout(talkingTimeouts.get(msg.id));
-      talkingTimeouts.delete(msg.id);
+      talkingDeadlines.delete(msg.id);
       voiceCodec.removeDecoder(msg.id);
       audio.removeStream(msg.id);
       renderClients();
@@ -970,8 +969,9 @@ function onDisconnected() {
   state.clients = [];
   state.channels = [];
   state.talking.clear();
-  for (const timeout of talkingTimeouts.values()) clearTimeout(timeout);
-  talkingTimeouts.clear();
+  talkingDeadlines.clear();
+  if (talkingSweepTimer) clearTimeout(talkingSweepTimer);
+  talkingSweepTimer = null;
   voiceCodec.resetDecoders();
   audio.resetPlayback();
   el.mainScreen.classList.add("hidden");
@@ -1211,7 +1211,23 @@ function fromTextMessage(m) {
   return { who: m.invokerName, where: `[${ch ? ch.name : t("text.channel")}]`, text: m.message };
 }
 
-const talkingTimeouts = new Map();
+const talkingDeadlines = new Map();
+let talkingSweepTimer = null;
+
+function scheduleTalkingSweep() {
+  if (talkingSweepTimer || talkingDeadlines.size === 0) return;
+  talkingSweepTimer = setTimeout(() => {
+    talkingSweepTimer = null;
+    const now = performance.now();
+    for (const [clid, deadline] of talkingDeadlines) {
+      if (deadline > now) continue;
+      talkingDeadlines.delete(clid);
+      setTalking(clid, false);
+    }
+    scheduleTalkingSweep();
+  }, 150);
+}
+
 function setTalking(clid, talking, fromVoice = false) {
   const wasTalking = state.talking.has(clid);
   if (talking) {
@@ -1223,8 +1239,10 @@ function setTalking(clid, talking, fromVoice = false) {
     el.clientList.querySelector(`[data-client-id="${clid}"]`)?.classList.toggle("talking", talking);
   }
   if (fromVoice && talking) {
-    clearTimeout(talkingTimeouts.get(clid));
-    talkingTimeouts.set(clid, setTimeout(() => setTalking(clid, false), 600));
+    talkingDeadlines.set(clid, performance.now() + 600);
+    scheduleTalkingSweep();
+  } else if (!talking) {
+    talkingDeadlines.delete(clid);
   }
 }
 

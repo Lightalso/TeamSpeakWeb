@@ -1,6 +1,6 @@
 {
   "name": "teamspeak-web",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "description": "A TeamSpeak web client — join servers, browse channels, and voice chat from the browser.",
   "private": true,
   "type": "module",

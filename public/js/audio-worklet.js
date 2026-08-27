@@ -62,7 +62,15 @@ class TeamSpeakPlaybackProcessor extends AudioWorkletProcessor {
       }
       return;
     }
-    if (message.type !== "push" || !message.samples?.length) return;
+    if (message.type === "pushBatch") {
+      for (const item of message.items ?? []) this.push(item);
+      return;
+    }
+    if (message.type === "push") this.push(message);
+  }
+
+  push(message) {
+    if (!message.samples?.length) return;
 
     let stream = this.streams.get(message.streamId);
     if (!stream) {
