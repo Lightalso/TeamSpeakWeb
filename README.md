@@ -1,70 +1,42 @@
 # TeamSpeak Web
 
-[English](#english) · [简体中文](#简体中文)
+A lightweight TeamSpeak web client with channel browsing, text chat, and Opus
+voice. The browser edition uses a small Node.js UDP gateway; the Android app is
+standalone and connects directly to TeamSpeak.
 
-https://github.com/Lightalso/TeamSpeakWeb/blob/main/screenshots/QQ20260827-154237.png
-https://github.com/Lightalso/TeamSpeakWeb/blob/main/screenshots/QQ20260827-154413.png
-https://github.com/Lightalso/TeamSpeakWeb/blob/main/screenshots/QQ20260827-154603.png
-https://github.com/Lightalso/TeamSpeakWeb/blob/main/screenshots/QQ20260827-154626.png
-https://github.com/Lightalso/TeamSpeakWeb/blob/main/screenshots/QQ20260827-154649.png
+[English](#english) · [简体中文](#简体中文) · [Releases](https://github.com/Lightalso/TeamSpeakWeb/releases)
 
 ## English
 
-A lightweight browser client for TeamSpeak 3, 5, and 6 servers. It supports
-channel browsing, client lists, text chat, voice chat, push-to-talk, individual
-client volume, persistent TeamSpeak identities, responsive mobile layouts, and
-light/dark themes.
+### Highlights
 
-> This is an independent, unofficial project and is not affiliated with or
-> endorsed by TeamSpeak Systems GmbH.
+- TeamSpeak channels, clients, chat, poke, and voice.
+- Open microphone, push-to-talk, and muted microphone modes.
+- Master input/output volume and per-client output volume.
+- Responsive desktop/mobile UI, resizable desktop columns, light/dark themes,
+  and English/Chinese localization.
+- Browser-local connection details and reusable TeamSpeak identity.
+- Docker deployment and a standalone Android APK.
 
-### Architecture
-
-Browsers cannot connect directly to TeamSpeak's UDP protocol. This project keeps
-a small Node.js gateway for TeamSpeak transport while moving Opus encoding,
-decoding, jitter buffering, mixing, and most application state into the browser.
+### How it works
 
 ```text
-Browser (UI + Web Audio + Opus WASM)
-        │
-        │ HTTP(S) + WebSocket (control and compressed Opus packets)
-        ▼
-Node.js gateway
-        │
-        │ TeamSpeak UDP protocol
-        ▼
-TeamSpeak 3 / 5 / 6 server
+Browser UI  ── WebSocket ── Node.js gateway ── UDP ── TeamSpeak server
+Android UI  ── embedded Node.js runtime ────── UDP ── TeamSpeak server
 ```
 
-The gateway does not decode or mix voice. Each browser connection owns one
-TeamSpeak client session.
-
-### Features
-
-- Connect to TeamSpeak 3, 5, and 6 servers, including password-protected servers
-  and channels.
-- Browse channels and clients, move between channels, and use channel text chat.
-- Low-latency Opus audio with dedicated WebAssembly codec workers, adaptive
-  jitter buffering, batched Android bridge transport, and AudioWorklet mixing.
-- Microphone, push-to-talk, output volume, and per-client volume controls.
-- English and Simplified Chinese interfaces with light, dark, and automatic
-  themes.
-- Desktop resizable panels and a mobile tab layout.
-- Connection settings, UI preferences, and the generated TeamSpeak identity are
-  persisted in the browser's `localStorage`.
+The web gateway handles TeamSpeak UDP traffic because browsers cannot open UDP
+sockets. The Android package embeds the gateway logic and needs no external
+TeamSpeak Web backend.
 
 ### Requirements
 
-- Node.js **20.19 or later**; Node.js 22 LTS is recommended.
-- npm, included with Node.js.
-- A current Chromium, Firefox, or Safari browser with WebAssembly and Web Audio.
-- Network access from the gateway host to the target TeamSpeak server's UDP voice
-  port (normally `9987`).
-- HTTPS for microphone access anywhere except `localhost`.
+- Node.js 20.19 or later; Node.js 22 LTS is recommended.
+- A current Chromium, Firefox, or Safari browser.
+- Network access to the TeamSpeak UDP port, normally `9987`.
+- HTTPS for microphone access except when using `localhost`.
 
-### Quick start from source
-
-Download the source with Git:
+### Run from source
 
 ```bash
 git clone https://github.com/Lightalso/TeamSpeakWeb.git
@@ -73,25 +45,13 @@ npm ci
 npm start
 ```
 
-Alternatively, download **Code → Download ZIP** from the GitHub project page,
-extract it, open a terminal in the extracted folder, then run:
+For a downloaded ZIP, extract it and run `npm install` followed by `npm start`.
+Open <http://localhost:3000>. Use `npm run dev` during development for automatic
+restart.
+
+For a compiled production deployment:
 
 ```bash
-npm install
-npm start
-```
-
-Open <http://localhost:3000>. `npm start` runs the TypeScript source directly and
-is the simplest option for a personal deployment. For development with automatic
-restart, use `npm run dev`.
-
-### Production deployment from downloaded source
-
-The following example builds JavaScript once and runs the compiled gateway:
-
-```bash
-git clone https://github.com/Lightalso/TeamSpeakWeb.git
-cd TeamSpeakWeb
 npm ci
 npm run typecheck
 npm run build
@@ -99,512 +59,204 @@ npm prune --omit=dev
 node dist/src/index.js
 ```
 
-`npm ci` also copies the required Opus WebAssembly files into `public/vendor/`.
-Do not skip the install step and do not deploy `dist/` alone: the running service
-also needs `public/`, `node_modules/`, and `package.json`.
+Keep `dist/`, `public/`, `node_modules/`, and `package.json` together. Restart
+the process after updating the source and rebuilding.
 
-To update an existing Git deployment:
+### Docker
 
-```bash
-git pull --ff-only
-npm ci
-npm run build
-npm prune --omit=dev
-```
-
-Restart the process after the update. If you deploy from a ZIP archive, replace
-the source directory with the new release, run the same install/build commands,
-then restart the process.
-
-### Docker deployment
-
-Docker Engine 24+ is recommended. Build and run the image from the project root:
+Use the published image:
 
 ```bash
-docker build -t teamspeak-web:latest .
 docker run -d \
   --name teamspeak-web \
   --restart unless-stopped \
   -p 3000:3000 \
-  teamspeak-web:latest
+  ghcr.io/lightalso/teamspeakweb:latest
 ```
 
-Open <http://localhost:3000>. View status and logs with:
-
-```bash
-docker ps --filter name=teamspeak-web
-docker logs -f teamspeak-web
-```
-
-The image uses a Node.js 22 Debian runtime, runs as the unprivileged `node` user,
-and includes an HTTP health check. The multi-stage build leaves TypeScript and
-other development dependencies out of the final image.
-
-To change the host-side web port while keeping the container port unchanged:
-
-```bash
-docker run -d \
-  --name teamspeak-web \
-  --restart unless-stopped \
-  -p 8080:3000 \
-  teamspeak-web:latest
-```
-
-Then open `http://localhost:8080`.
-
-#### Docker Compose
-
-The included `compose.yaml` builds the image and publishes port `3000` by
-default:
-
-```bash
-docker compose up -d --build
-docker compose ps
-docker compose logs -f
-```
-
-To use another host port or bind address, copy the example environment file,
-edit `TSWEB_PORT` and `TSWEB_BIND`, then recreate the service. Use
-`TSWEB_BIND=127.0.0.1` when an HTTPS reverse proxy runs on the same host:
+Or build and run the included Compose service:
 
 ```bash
 cp .env.example .env
-# Edit .env, for example: TSWEB_BIND=127.0.0.1 and TSWEB_PORT=8080
 docker compose up -d --build
+docker compose logs -f
 ```
 
-Compose reads this `.env` file for variable substitution; the application itself
-still reads its runtime configuration from environment variables.
-
-For the recommended setup where TeamSpeak runs directly on the same Docker host,
-enable the locked-server mode in `.env`:
+When TeamSpeak runs on the same Docker host, set these values in `.env`:
 
 ```dotenv
 TSWEB_LOCK_SERVER=true
 TSWEB_TEAMSPEAK_ADDRESS=host.docker.internal:9987
 ```
 
-`compose.yaml` maps `host.docker.internal` to Docker's host gateway on Linux and
-Docker Desktop. If TeamSpeak runs in another container on the same Docker
-network, use that container's service name instead, such as
-`teamspeak:9987`.
+`compose.yaml` maps `host.docker.internal` to the host gateway on Linux and
+Docker Desktop. If TeamSpeak is another container on the same network, use its
+service name, for example `teamspeak:9987`.
 
-Stop and remove the container without deleting the source or image:
+Useful Compose commands:
 
 ```bash
+docker compose ps
+docker compose up -d --build
 docker compose down
 ```
-
-Update a Git-based Docker deployment with:
-
-```bash
-git pull --ff-only
-docker compose build --pull
-docker compose up -d
-docker image prune -f
-```
-
-The last command is optional and removes unused image layers. Do not add a UDP
-port mapping for TeamSpeak: the browser connects to the container over TCP while
-the gateway makes outbound UDP connections to the selected TeamSpeak servers.
-Ensure Docker's host firewall permits this outbound UDP traffic.
-
-For public or LAN use, place an HTTPS reverse proxy in front of the published
-container port. The Nginx example below supports both the web interface and its
-WebSocket connection. If built-in HTTPS is preferred, mount certificates
-read-only and set `SSL_CERT` and `SSL_KEY`, for example:
-
-```bash
-docker run -d \
-  --name teamspeak-web \
-  --restart unless-stopped \
-  -p 3443:3000 \
-  -v /absolute/path/to/certificates:/certs:ro \
-  -e SSL_CERT=/certs/fullchain.pem \
-  -e SSL_KEY=/certs/privkey.pem \
-  teamspeak-web:latest
-```
-
-### Android application package
-
-The repository includes a standalone Capacitor 8 Android project. The APK embeds
-the UI, Opus WebAssembly assets, a Node.js Mobile runtime, and the TeamSpeak
-session implementation. It connects directly from the phone to the TeamSpeak
-server over UDP and does **not** require a separately deployed TeamSpeak Web
-gateway.
-
-Requirements for building Android packages:
-
-- Node.js 22 or later.
-- Android Studio with its bundled JDK.
-- Android SDK Platform 36 and SDK tools. The generated app supports Android 7
-  (API 24) and later.
-- Internet access during the first Gradle build. The Node.js Mobile runtime
-  binaries are downloaded by the Android plugin on demand.
-- Network access from the phone to the selected TeamSpeak server's UDP port,
-  normally `9987`.
-
-Create `android/keystore.properties` with the stable release keystore settings
-(this file and `*.jks` are ignored by Git):
-
-```properties
-storeFile=release-signing/teamspeakweb-release.jks
-storePassword=your-store-password
-keyAlias=teamspeakweb
-keyPassword=your-key-password
-```
-
-You can generate both ignored files once with `npm run android:signing:init`.
-The command refuses to overwrite an existing signing identity. Back up both
-files before relying on them for upgrades.
-
-Then build a directly installable, signed release APK on Linux/macOS:
-
-```bash
-npm run android:apk
-```
-
-Windows PowerShell:
-
-```powershell
-npm run android:apk
-```
-
-The signed result is copied to:
-
-```text
-artifacts/TeamSpeakWeb-release.apk
-```
-
-Install it on an attached device with Android platform tools:
-
-```bash
-adb install -r artifacts/TeamSpeakWeb-release.apk
-```
-
-For a local development APK with the standard debug signature, use
-`npm run android:apk:debug`.
-
-To run on an emulator/device or open the native project in Android Studio:
-
-```bash
-npm run android:run
-npm run android:open
-```
-
-After frontend or session changes, run `npm run android:sync` before rebuilding.
-This command bundles the shared TeamSpeak session into `public/nodejs/` and then
-copies both the UI and embedded runtime project into the native application.
-
-Keep the release keystore backed up securely. Every release must use the same
-key for Android to accept an in-place update. Update `versionCode` and
-`versionName` in `android/app/build.gradle` for every release.
-
-The native manifest includes Internet, audio-settings, and microphone
-permissions. Android will ask for microphone access when voice is initialized.
-App identities, saved connection details, and preferences remain in the app's
-private WebView storage. Android backup is disabled to reduce the risk of
-copying saved TeamSpeak identities and passwords.
-
-The web-only `TSWEB_LOCK_SERVER` and `TSWEB_TEAMSPEAK_ADDRESS` variables do not
-apply to the standalone APK. The Android login form selects the TeamSpeak server
-that the phone connects to directly. Consequently, `127.0.0.1` means the Android
-device itself, not the machine hosting a web gateway.
-
-### Automated GitHub releases
-
-Pushing a semantic `v*` tag runs `.github/workflows/release.yml`. The workflow
-publishes a `linux/amd64` image to
-`ghcr.io/<repository-owner>/<repository-name>:<tag>` and also updates the
-`latest` tag. After the image succeeds, it builds a universal Android release APK
-for `armeabi-v7a`, `arm64-v8a`, and `x86_64`, creates a GitHub Release, and
-uploads the APK together with its SHA-256 checksum.
-
-The tag must equal `v` plus the version in `package.json`. For the current
-version:
-
-```bash
-git tag v0.0.2
-git push origin v0.0.2
-```
-
-The Android job requires these GitHub Actions secrets: `ANDROID_KEYSTORE_BASE64`
-(the complete JKS file encoded as one-line Base64),
-`ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, and `ANDROID_KEY_PASSWORD`.
-Keeping the same secret keystore makes all automated APKs upgrade-compatible.
 
 ### Configuration
 
-| Variable | Default | Purpose |
+| Variable | Default | Description |
 | --- | --- | --- |
-| `PORT` | `3000` | HTTP/HTTPS and WebSocket listen port |
-| `HOST` | `0.0.0.0` | Address on which the gateway listens |
-| `SSL_CERT` | unset | TLS certificate file; enables built-in HTTPS with `SSL_KEY` |
-| `SSL_KEY` | unset | TLS private-key file; enables built-in HTTPS with `SSL_CERT` |
-| `TSWEB_LOCK_SERVER` | `false` | Lock every browser session to the configured TeamSpeak server; accepts `true`, `1`, `yes`, or `on` |
-| `TSWEB_TEAMSPEAK_ADDRESS` | `127.0.0.1:9987` | TeamSpeak address used by the gateway when server locking is enabled |
+| `HOST` | `0.0.0.0` | Gateway listen address |
+| `PORT` | `3000` | HTTP/HTTPS and WebSocket port |
+| `SSL_CERT` | unset | TLS certificate file; use together with `SSL_KEY` |
+| `SSL_KEY` | unset | TLS private key file; use together with `SSL_CERT` |
+| `TSWEB_LOCK_SERVER` | `false` | Lock the login form and gateway to one server |
+| `TSWEB_TEAMSPEAK_ADDRESS` | `127.0.0.1:9987` | Backend TeamSpeak address when locked |
 
-Linux/macOS example:
+`TSWEB_LOCK_SERVER` accepts `true`, `1`, `yes`, or `on`. In locked mode, the
+browser shows the website host as a read-only label while the gateway always
+uses `TSWEB_TEAMSPEAK_ADDRESS`.
 
-```bash
-HOST=127.0.0.1 PORT=3000 node dist/src/index.js
-```
+Compose additionally reads `TSWEB_BIND` and `TSWEB_PORT` from `.env` to control
+the host-side bind address and published port.
 
-Windows PowerShell example:
+### HTTPS
 
-```powershell
-$env:HOST = "127.0.0.1"
-$env:PORT = "3000"
-node dist/src/index.js
-```
-
-The application reads environment variables directly; it does not load `.env`
-files by itself.
-
-#### Lock the deployment to one TeamSpeak server
-
-When the web gateway and TeamSpeak server run directly on the same machine:
-
-```bash
-TSWEB_LOCK_SERVER=true \
-TSWEB_TEAMSPEAK_ADDRESS=127.0.0.1:9987 \
-npm start
-```
-
-With this mode enabled, the login form displays the current website hostname in
-a read-only server field. The displayed value is only a user-facing label: the
-gateway always connects to `TSWEB_TEAMSPEAK_ADDRESS` and ignores any server
-address supplied by the browser. The private backend address is not returned in
-the public runtime configuration response.
-
-For a standalone Docker container connecting to TeamSpeak on the Docker host,
-add the host-gateway mapping explicitly:
-
-```bash
-docker run -d \
-  --name teamspeak-web \
-  --restart unless-stopped \
-  --add-host host.docker.internal:host-gateway \
-  -p 3000:3000 \
-  -e TSWEB_LOCK_SERVER=true \
-  -e TSWEB_TEAMSPEAK_ADDRESS=host.docker.internal:9987 \
-  teamspeak-web:latest
-```
-
-### HTTPS and reverse proxy
-
-Microphone capture requires a secure browser context. Plain HTTP works for
-`localhost`, but a LAN address or public domain must use HTTPS. For a public
-deployment, bind the application to `127.0.0.1` and terminate TLS with a reverse
-proxy. Example Nginx site:
+Microphone capture requires HTTPS on LAN addresses and public domains. Either
+set `SSL_CERT` and `SSL_KEY`, or put an HTTPS reverse proxy in front of the
+gateway. A reverse proxy must forward WebSocket upgrades:
 
 ```nginx
-server {
-    listen 443 ssl http2;
-    server_name voice.example.com;
-
-    ssl_certificate     /etc/letsencrypt/live/voice.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/voice.example.com/privkey.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 3600s;
-    }
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 3600s;
 }
 ```
 
-Allow inbound TCP `443` (or the chosen web port) in the host firewall. The
-gateway also needs outbound UDP access to TeamSpeak servers; the TeamSpeak
-server's UDP port does not normally need to be opened inbound on the gateway.
+Allow inbound TCP for the web service and outbound UDP from the gateway to the
+TeamSpeak server.
 
-Built-in HTTPS is also available when both certificate paths are set:
+### Android
 
-```bash
-SSL_CERT=/path/to/fullchain.pem SSL_KEY=/path/to/privkey.pem npm start
-```
+The Capacitor 8 Android project supports Android 7 (API 24) and later. It
+contains the UI, Opus assets, and embedded Node.js TeamSpeak runtime.
 
-### Run as a Linux service
+Requirements: Node.js 22+, JDK/Android Studio, Android SDK Platform 36, and
+internet access for the first Gradle build.
 
-After completing the production build, create
-`/etc/systemd/system/teamspeak-web.service` and adjust the user and paths:
-
-```ini
-[Unit]
-Description=TeamSpeak Web gateway
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=teamspeak-web
-WorkingDirectory=/opt/TeamSpeakWeb
-Environment=NODE_ENV=production
-Environment=HOST=127.0.0.1
-Environment=PORT=3000
-ExecStart=/usr/bin/node /opt/TeamSpeakWeb/dist/src/index.js
-Restart=on-failure
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-
-Enable and start it:
+Create a fixed release identity once, then build:
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now teamspeak-web
-sudo systemctl status teamspeak-web
+npm run android:signing:init
+npm run android:apk
 ```
 
-### Separate static frontend and gateway
+The signed APK is written to `artifacts/TeamSpeakWeb-release.apk`. Back up these
+ignored files securely; they are required for future upgrade-compatible builds:
 
-The `public/` directory can be hosted separately. Point it to the gateway by
-opening the frontend with `?bridge=wss://gateway.example.com/ws`, or define
-`window.TSWEB_BRIDGE_URL` before `public/js/main.js` loads. Configure the
-gateway's reverse proxy and cross-site access policy appropriately for your
-deployment. A same-origin deployment is simpler and is recommended.
+```text
+android/release-signing/teamspeakweb-release.jks
+android/keystore.properties
+```
 
-### Usage and local data
+Use `npm run android:apk:debug` for a development APK, `npm run android:run` for
+a connected device/emulator, or `npm run android:open` for Android Studio.
 
-Enter a TeamSpeak server address, nickname, and optional passwords, then connect
-and allow microphone access. The microphone button cycles through open,
-push-to-talk, and muted modes. In push-to-talk mode, hold the control or the
-Space key on desktop.
+### Automated releases
 
-Connection information—including server and channel passwords—and the generated
-TeamSpeak private identity are stored unencrypted in that browser profile's
-`localStorage`. Do not use a shared or untrusted browser profile. Clearing site
-data removes the saved identity and creates a new TeamSpeak identity on the next
-connection.
+Pushing a `v*` tag whose value matches `package.json` starts
+`.github/workflows/release.yml`. It publishes:
+
+- `linux/amd64` Docker images to GHCR with the version and `latest` tags.
+- A universal, signed Android release APK and SHA-256 file to GitHub Releases.
+
+The Android job requires these repository secrets:
+
+```text
+ANDROID_KEYSTORE_BASE64
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
+```
+
+Always reuse the same keystore for Android updates.
+
+### Local data and security
+
+Connection details, passwords, preferences, and the generated TeamSpeak private
+identity are stored unencrypted in the current browser profile's `localStorage`.
+Do not use a shared or untrusted profile. Clearing site data removes the saved
+identity.
 
 ### Troubleshooting
 
-#### The page opens, but the microphone is unavailable
+- **Microphone unavailable:** use HTTPS outside `localhost` and check browser
+  site permissions.
+- **`send ENETUNREACH`:** check outbound UDP routing/firewall rules; try an
+  explicit IPv4 address.
+- **`insufficient client permissions (id=2568)`:** the normal welcome data is
+  usually sufficient. On customized servers, grant
+  `b_virtualserver_channel_list`, `b_virtualserver_client_list`, and
+  `b_virtualserver_info_view` to the connecting group.
+- **WebSocket fails behind a proxy:** forward `Upgrade` and `Connection`, use
+  HTTP/1.1 upstream, and use `wss://` from HTTPS pages.
 
-Use `https://` unless the page is served from `localhost`. Check the browser's
-site permissions and verify that no other policy blocks microphone access.
+### Development
 
-#### `send ENETUNREACH`
+| Command | Purpose |
+| --- | --- |
+| `npm run dev` | Run with automatic restart |
+| `npm test` | Build and run regression tests |
+| `npm run typecheck` | Check web and Android TypeScript |
+| `npm run build` | Compile the Node.js gateway |
+| `npm run android:sync` | Bundle and sync Android assets |
+| `npm run android:apk` | Build the signed release APK |
 
-Verify outbound UDP routing and firewall rules from the gateway host to the
-TeamSpeak server. The gateway resolves hostname connections to IPv4 first to
-avoid an unreachable IPv6 route on dual-stack hosts; explicit IPv4, bracketed
-IPv6, and custom ports remain supported.
-
-#### `insufficient client permissions (id=2568)`
-
-The gateway normally builds channel, client, and server state from the standard
-welcome data. If a customized server suppresses that data too, grant the guest
-or connecting group `b_virtualserver_channel_list`,
-`b_virtualserver_client_list`, and `b_virtualserver_info_view`.
-
-#### WebSocket connection fails behind Nginx
-
-Confirm that the proxy forwards the `Upgrade` and `Connection` headers, uses
-HTTP/1.1 upstream, and has a sufficiently long read timeout. HTTPS pages must
-connect to a `wss://` gateway, not `ws://`.
-
-### Project layout
+Main directories:
 
 ```text
-android/        Capacitor Android Studio project and native manifest
-mobile/         Android event transport and embedded Node.js entry point
-public/         Browser UI, audio pipeline, and generated Opus WASM assets
-scripts/        Dependency preparation and Android packaging scripts
-server/src/     HTTP/WebSocket gateway and TeamSpeak session implementation
-capacitor.config.ts  Android application identity and bundled web directory
-tsconfig.mobile.json Type checking for the embedded runtime and native transport
-dist/           Compiled server output (generated and gitignored)
-参考仓库/        Local reference source material (gitignored)
+public/      Browser UI and audio workers
+server/      TeamSpeak gateway and shared session logic
+mobile/      Android embedded transport
+android/     Capacitor Android project
+scripts/     Build and packaging scripts
 ```
 
-### Development commands
-
-| Command | Description |
-| --- | --- |
-| `npm run dev` | Run the gateway with automatic restart |
-| `npm start` | Run the TypeScript source once |
-| `npm run typecheck` | Check TypeScript without producing files |
-| `npm run build` | Compile the gateway into `dist/` |
-| `npm run prepare:android` | Bundle the embedded TeamSpeak runtime and Android transport |
-| `npm run android:sync` | Build mobile assets and copy them into the Android project |
-| `npm run android:run` | Synchronize and run on a selected device/emulator |
-| `npm run android:signing:init` | Generate the fixed local release signing identity once |
-| `npm run android:apk` | Build a signed release APK in `artifacts/` |
-| `npm run android:apk:debug` | Build a development APK with the debug signature |
-| `npm run android:open` | Open the native project in Android Studio |
-
-### Current limitations
-
-- Only Opus TeamSpeak voice codecs (codec IDs 4 and 5) are decoded; legacy
-  Speex/CELT audio is ignored.
-- Voice depends on browser WebAssembly and Web Audio support.
-- The browser build still requires the Node.js UDP gateway. Only the Android APK
-  embeds the TeamSpeak transport and runs without that gateway.
-
-### License
-
-[MIT](LICENSE). The bundled TeamSpeak protocol library is a clean-room
-implementation.
-
----
+Current limitations: only TeamSpeak Opus codec IDs 4 and 5 are decoded; browser
+voice requires WebAssembly and Web Audio support.
 
 ## 简体中文
 
-一个轻量级的 TeamSpeak 3、5、6 网页客户端，支持频道浏览、客户端列表、
-文字聊天、语音聊天、按键说话、单独调节客户端音量、持久化 TeamSpeak 身份、
-移动端布局以及日间/夜间主题。
+### 主要功能
 
-> 本项目是独立开发的非官方项目，与 TeamSpeak Systems GmbH 无隶属或背书关系。
+- TeamSpeak 频道、客户端、文字聊天、戳一戳和语音功能。
+- 麦克风常开、按键说话和静音三种模式。
+- 麦克风、总输出及单个客户端音量调节。
+- 响应式桌面/移动端界面、桌面栏目拖动、日夜主题及中英文切换。
+- 在浏览器本地保存连接信息并复用 TeamSpeak 身份。
+- 支持 Docker 部署和可独立运行的 Android APK。
 
 ### 工作原理
 
-浏览器无法直接连接 TeamSpeak 使用的 UDP 协议，因此本项目保留了一个轻量级
-Node.js 网关。Opus 编解码、抖动缓冲、混音和大部分应用状态都在浏览器中完成。
-
 ```text
-浏览器（界面 + Web Audio + Opus WASM）
-        │
-        │ HTTP(S) + WebSocket（控制消息与压缩后的 Opus 数据包）
-        ▼
-Node.js 网关
-        │
-        │ TeamSpeak UDP 协议
-        ▼
-TeamSpeak 3 / 5 / 6 服务器
+浏览器界面 ── WebSocket ── Node.js 网关 ── UDP ── TeamSpeak 服务器
+Android APP ── 内嵌 Node.js 运行时 ─────── UDP ── TeamSpeak 服务器
 ```
 
-网关不解码或混合语音，每个浏览器连接对应一个独立的 TeamSpeak 客户端会话。
-
-### 主要功能
-
-- 连接 TeamSpeak 3、5、6 服务器，包括设置了密码的服务器和频道。
-- 浏览频道和客户端、切换频道并使用频道文字聊天。
-- 使用独立 WebAssembly 编解码 Worker、自适应抖动缓冲、Android 语音合批传输和
-  AudioWorklet 混音的低延迟 Opus 音频。
-- 麦克风、按键说话、总输出音量和单客户端音量控制。
-- 英文/简体中文界面，以及日间、夜间和自动主题。
-- 桌面端可拖动分栏和移动端页签布局。
-- 在浏览器 `localStorage` 中持久保存连接信息、界面偏好和 TeamSpeak 身份。
+浏览器不能直接使用 UDP，因此网页版需要轻量网关。Android APP 已内嵌相同的连接
+逻辑，可以直接连接 TeamSpeak，不依赖外部 TeamSpeak Web 后端。
 
 ### 环境要求
 
-- Node.js **20.19 或更高版本**，推荐 Node.js 22 LTS。
-- Node.js 自带的 npm。
-- 支持 WebAssembly 和 Web Audio 的新版 Chromium、Firefox 或 Safari。
-- 网关主机能够通过 UDP 访问目标 TeamSpeak 服务器的语音端口，默认是 `9987`。
-- 除 `localhost` 外，使用麦克风必须通过 HTTPS 访问。
+- Node.js 20.19 或更高版本，推荐 Node.js 22 LTS。
+- 支持 WebAssembly 和 Web Audio 的现代浏览器。
+- 网关能够访问 TeamSpeak UDP 端口，通常为 `9987`。
+- 除 `localhost` 外，浏览器使用麦克风需要 HTTPS。
 
-### 下载源码并快速部署
-
-使用 Git 下载：
+### 从源码运行
 
 ```bash
 git clone https://github.com/Lightalso/TeamSpeakWeb.git
@@ -613,24 +265,12 @@ npm ci
 npm start
 ```
 
-也可以在 GitHub 项目页面选择 **Code → Download ZIP**，解压后在项目目录中
-打开终端并执行：
+也可以在 GitHub 下载 ZIP，解压后执行 `npm install` 和 `npm start`。访问
+<http://localhost:3000>。开发时可使用 `npm run dev` 自动重启。
+
+生产环境可预先编译：
 
 ```bash
-npm install
-npm start
-```
-
-然后打开 <http://localhost:3000>。`npm start` 会直接运行 TypeScript 源码，适合
-个人部署和快速体验。开发时可改用 `npm run dev`，修改文件后服务会自动重启。
-
-### 下载源码后的生产部署
-
-以下流程会先编译 JavaScript，再运行编译后的网关：
-
-```bash
-git clone https://github.com/Lightalso/TeamSpeakWeb.git
-cd TeamSpeakWeb
 npm ci
 npm run typecheck
 npm run build
@@ -638,428 +278,169 @@ npm prune --omit=dev
 node dist/src/index.js
 ```
 
-`npm ci` 还会将必需的 Opus WebAssembly 文件复制到 `public/vendor/`，因此不能
-跳过依赖安装，也不能只部署 `dist/`。运行时还需要保留 `public/`、
-`node_modules/` 和 `package.json`。
-
-使用 Git 部署时可按下面的方式升级：
-
-```bash
-git pull --ff-only
-npm ci
-npm run build
-npm prune --omit=dev
-```
-
-完成后重启进程。若使用 ZIP 包部署，则用新版本源码替换原目录，重新执行安装和
-构建命令，然后重启进程。
+部署时需要同时保留 `dist/`、`public/`、`node_modules/` 和 `package.json`。更新源码
+并重新构建后，需要重启进程。
 
 ### Docker 部署
 
-推荐使用 Docker Engine 24 或更高版本。在项目根目录构建并运行镜像：
+直接使用已发布镜像：
 
 ```bash
-docker build -t teamspeak-web:latest .
 docker run -d \
   --name teamspeak-web \
   --restart unless-stopped \
   -p 3000:3000 \
-  teamspeak-web:latest
+  ghcr.io/lightalso/teamspeakweb:latest
 ```
 
-然后打开 <http://localhost:3000>。可通过以下命令查看状态和日志：
-
-```bash
-docker ps --filter name=teamspeak-web
-docker logs -f teamspeak-web
-```
-
-镜像使用 Node.js 22 Debian 运行环境，以无特权的 `node` 用户运行，并内置 HTTP
-健康检查。多阶段构建不会把 TypeScript 等开发依赖带入最终镜像。
-
-如需修改宿主机网页端口，同时保持容器端口不变：
-
-```bash
-docker run -d \
-  --name teamspeak-web \
-  --restart unless-stopped \
-  -p 8080:3000 \
-  teamspeak-web:latest
-```
-
-随后打开 `http://localhost:8080`。
-
-#### Docker Compose
-
-项目中的 `compose.yaml` 会构建镜像，并默认映射到宿主机 `3000` 端口：
-
-```bash
-docker compose up -d --build
-docker compose ps
-docker compose logs -f
-```
-
-如需使用其他宿主机端口或绑定地址，复制环境变量示例文件，修改 `TSWEB_PORT`
-和 `TSWEB_BIND`，然后重新创建服务。如果 HTTPS 反向代理运行在同一台主机上，
-应使用 `TSWEB_BIND=127.0.0.1`：
+或者使用仓库中的 Compose 配置构建：
 
 ```bash
 cp .env.example .env
-# 编辑 .env，例如设置：TSWEB_BIND=127.0.0.1 和 TSWEB_PORT=8080
 docker compose up -d --build
+docker compose logs -f
 ```
 
-Compose 会读取 `.env` 进行变量替换；应用程序本身仍然只读取运行时环境变量。
-
-如果 TeamSpeak 直接运行在同一台 Docker 宿主机上，推荐在 `.env` 中启用服务器
-锁定模式：
+TeamSpeak 与本项目位于同一 Docker 主机时，在 `.env` 中设置：
 
 ```dotenv
 TSWEB_LOCK_SERVER=true
 TSWEB_TEAMSPEAK_ADDRESS=host.docker.internal:9987
 ```
 
-`compose.yaml` 会在 Linux 和 Docker Desktop 中把 `host.docker.internal` 映射到
-Docker 宿主机网关。如果 TeamSpeak 运行在同一个 Docker 网络中的另一个容器内，
-则应改用该容器的服务名，例如 `teamspeak:9987`。
+`compose.yaml` 已在 Linux 和 Docker Desktop 中将 `host.docker.internal` 映射到
+宿主机。如果 TeamSpeak 位于同一网络中的其他容器，请改用其服务名，例如
+`teamspeak:9987`。
 
-停止并移除容器，但保留源码和镜像：
+常用命令：
 
 ```bash
+docker compose ps
+docker compose up -d --build
 docker compose down
 ```
 
-使用 Git 部署时，可按以下方式升级 Docker 版本：
-
-```bash
-git pull --ff-only
-docker compose build --pull
-docker compose up -d
-docker image prune -f
-```
-
-最后一条命令是可选的，用于删除不再使用的镜像层。不要为 TeamSpeak 添加 UDP
-端口映射：浏览器通过 TCP 连接容器，而网关主动向用户选择的 TeamSpeak 服务器
-发起 UDP 连接。只需确保 Docker 宿主机防火墙允许这些出站 UDP 流量。
-
-在公网或局域网中使用时，应在容器发布端口前配置 HTTPS 反向代理。后文的 Nginx
-示例同时支持网页和 WebSocket。如果希望使用程序内置 HTTPS，可以只读挂载证书
-并设置 `SSL_CERT` 和 `SSL_KEY`，例如：
-
-```bash
-docker run -d \
-  --name teamspeak-web \
-  --restart unless-stopped \
-  -p 3443:3000 \
-  -v /absolute/path/to/certificates:/certs:ro \
-  -e SSL_CERT=/certs/fullchain.pem \
-  -e SSL_KEY=/certs/privkey.pem \
-  teamspeak-web:latest
-```
-
-### Android APP 打包
-
-仓库已经包含可独立运行的 Capacitor 8 Android 工程。APK 会内置界面、Opus
-WebAssembly 资源、Node.js Mobile 运行时和 TeamSpeak 会话实现。手机会通过 UDP
-直接连接 TeamSpeak 服务器，**不需要**另外部署 TeamSpeak Web 网关。
-
-Android 打包环境要求：
-
-- Node.js 22 或更高版本。
-- Android Studio 及其自带的 JDK。
-- Android SDK Platform 36 和 SDK 工具。生成的 APP 支持 Android 7（API 24）及
-  更高版本。
-- 首次执行 Gradle 构建时需要能够访问互联网，Android 插件会按需下载 Node.js
-  Mobile 运行时二进制文件。
-- 手机能够通过网络访问目标 TeamSpeak 服务器的 UDP 端口，默认端口为 `9987`。
-
-创建 `android/keystore.properties`，填写固定的 release 签名配置（该文件和
-`*.jks` 已被 Git 忽略）：
-
-```properties
-storeFile=release-signing/teamspeakweb-release.jks
-storePassword=你的密钥库密码
-keyAlias=teamspeakweb
-keyPassword=你的密钥密码
-```
-
-也可以执行一次 `npm run android:signing:init` 自动生成这两个忽略文件。该命令不会
-覆盖已有签名身份；在依赖其进行覆盖升级前，请先安全备份两个文件。
-
-然后在 Linux/macOS 中生成可直接安装的已签名 release APK：
-
-```bash
-npm run android:apk
-```
-
-Windows PowerShell：
-
-```powershell
-npm run android:apk
-```
-
-签名后的生成结果会复制到：
-
-```text
-artifacts/TeamSpeakWeb-release.apk
-```
-
-安装到通过 USB 连接的设备：
-
-```bash
-adb install -r artifacts/TeamSpeakWeb-release.apk
-```
-
-本地开发时如需使用标准 debug 签名，可执行 `npm run android:apk:debug`。
-
-在模拟器/设备中运行，或者使用 Android Studio 打开原生工程：
-
-```bash
-npm run android:run
-npm run android:open
-```
-
-修改前端或会话代码后，重新打包前执行 `npm run android:sync`。该命令会将共享的
-TeamSpeak 会话代码打包到 `public/nodejs/`，再把界面和内嵌运行项目一起复制到原生
-Android 工程中。
-
-请安全备份 release 密钥库。Android 只有在后续版本继续使用同一签名时才允许覆盖
-安装。每次发布前还需更新 `android/app/build.gradle` 中的 `versionCode` 和
-`versionName`。
-
-原生清单已经声明网络、音频设置和麦克风权限。初始化语音时，Android 会请求
-麦克风授权。APP 身份、连接记录和偏好设置会保留在应用的私有 WebView 存储中。
-Android 备份已关闭，以降低已保存 TeamSpeak 身份和密码被复制的风险。
-
-仅供网页版使用的 `TSWEB_LOCK_SERVER` 和 `TSWEB_TEAMSPEAK_ADDRESS` 不会影响
-独立 APK。Android 登录表单中填写的 TeamSpeak 地址由手机直接连接。因此在 APK
-中，`127.0.0.1` 表示 Android 设备自身，而不是部署网页网关的机器。
-
-### GitHub 自动发布
-
-推送符合语义化版本格式的 `v*` Tag 后，`.github/workflows/release.yml` 会自动运行。
-工作流会把 `linux/amd64` 镜像推送到
-`ghcr.io/<仓库所有者>/<仓库名称>:<Tag>`，并同时更新 `latest`；镜像构建成功后，
-还会构建包含 `armeabi-v7a`、`arm64-v8a` 和 `x86_64` 的 Android 通用 release APK，
-创建 GitHub Release，并上传 APK 及其 SHA-256 校验文件。
-
-Tag 必须是字母 `v` 加上 `package.json` 中的版本号。当前版本可执行：
-
-```bash
-git tag v0.0.2
-git push origin v0.0.2
-```
-
-Android 构建需要配置四个 GitHub Actions Secret：`ANDROID_KEYSTORE_BASE64`
-（完整 JKS 文件的单行 Base64）、`ANDROID_KEYSTORE_PASSWORD`、
-`ANDROID_KEY_ALIAS` 和 `ANDROID_KEY_PASSWORD`。持续使用同一份 Secret 密钥库，
-自动构建的各版本 APK 才能直接覆盖升级。
-
 ### 配置项
 
-| 环境变量 | 默认值 | 用途 |
+| 环境变量 | 默认值 | 说明 |
 | --- | --- | --- |
-| `PORT` | `3000` | HTTP/HTTPS 与 WebSocket 监听端口 |
 | `HOST` | `0.0.0.0` | 网关监听地址 |
-| `SSL_CERT` | 未设置 | TLS 证书路径；与 `SSL_KEY` 同时设置时启用内置 HTTPS |
-| `SSL_KEY` | 未设置 | TLS 私钥路径；与 `SSL_CERT` 同时设置时启用内置 HTTPS |
-| `TSWEB_LOCK_SERVER` | `false` | 将所有浏览器会话锁定到指定 TeamSpeak 服务器；接受 `true`、`1`、`yes` 或 `on` |
-| `TSWEB_TEAMSPEAK_ADDRESS` | `127.0.0.1:9987` | 锁定服务器后由网关实际连接的 TeamSpeak 地址 |
+| `PORT` | `3000` | HTTP/HTTPS 和 WebSocket 端口 |
+| `SSL_CERT` | 未设置 | TLS 证书文件，需要与 `SSL_KEY` 同时设置 |
+| `SSL_KEY` | 未设置 | TLS 私钥文件，需要与 `SSL_CERT` 同时设置 |
+| `TSWEB_LOCK_SERVER` | `false` | 将登录界面和网关锁定到一台服务器 |
+| `TSWEB_TEAMSPEAK_ADDRESS` | `127.0.0.1:9987` | 锁定模式下后端实际连接的地址 |
 
-Linux/macOS 示例：
+`TSWEB_LOCK_SERVER` 接受 `true`、`1`、`yes` 或 `on`。锁定后，浏览器只读显示当前
+网页地址，网关始终连接 `TSWEB_TEAMSPEAK_ADDRESS`。
 
-```bash
-HOST=127.0.0.1 PORT=3000 node dist/src/index.js
-```
+Compose 还会从 `.env` 读取 `TSWEB_BIND` 和 `TSWEB_PORT`，分别控制宿主机绑定地址
+和对外端口。
 
-Windows PowerShell 示例：
+### HTTPS
 
-```powershell
-$env:HOST = "127.0.0.1"
-$env:PORT = "3000"
-node dist/src/index.js
-```
-
-程序直接读取系统环境变量，不会自动加载 `.env` 文件。
-
-#### 将部署锁定到一台 TeamSpeak 服务器
-
-网页网关和 TeamSpeak 服务都直接运行在同一台机器上时：
-
-```bash
-TSWEB_LOCK_SERVER=true \
-TSWEB_TEAMSPEAK_ADDRESS=127.0.0.1:9987 \
-npm start
-```
-
-启用后，登录表单的服务器地址会显示当前网页主机名，并设置为只读。这个显示值
-仅用于帮助用户识别服务器；网关始终连接 `TSWEB_TEAMSPEAK_ADDRESS`，并忽略
-浏览器请求中携带的任何服务器地址。公开的运行时配置响应不会返回私有后端地址。
-
-如果使用单独的 Docker 容器连接 Docker 宿主机上的 TeamSpeak，需要显式添加
-宿主机网关映射：
-
-```bash
-docker run -d \
-  --name teamspeak-web \
-  --restart unless-stopped \
-  --add-host host.docker.internal:host-gateway \
-  -p 3000:3000 \
-  -e TSWEB_LOCK_SERVER=true \
-  -e TSWEB_TEAMSPEAK_ADDRESS=host.docker.internal:9987 \
-  teamspeak-web:latest
-```
-
-### HTTPS 与反向代理
-
-浏览器只允许安全上下文获取麦克风。`localhost` 可以使用普通 HTTP，但局域网 IP
-或公网域名必须使用 HTTPS。公网部署建议让程序监听 `127.0.0.1`，再通过反向
-代理终止 TLS。下面是 Nginx 配置示例：
+局域网 IP 或公网域名必须使用 HTTPS 才能获取麦克风。可以配置 `SSL_CERT` 与
+`SSL_KEY` 使用内置 HTTPS，也可以在网关前部署 HTTPS 反向代理。反向代理必须转发
+WebSocket 升级：
 
 ```nginx
-server {
-    listen 443 ssl http2;
-    server_name voice.example.com;
-
-    ssl_certificate     /etc/letsencrypt/live/voice.example.com/fullchain.pem;
-    ssl_certificate_key /etc/letsencrypt/live/voice.example.com/privkey.pem;
-
-    location / {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_read_timeout 3600s;
-    }
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 3600s;
 }
 ```
 
-主机防火墙需要放行 TCP `443` 或你选择的网页端口。网关还需要允许向 TeamSpeak
-服务器发出 UDP 流量；通常不需要在网关上入站开放 TeamSpeak 的 UDP 端口。
+防火墙需要允许网页服务的入站 TCP，以及网关到 TeamSpeak 服务器的出站 UDP。
 
-同时设置证书和私钥路径也可以直接启用程序内置的 HTTPS：
+### Android APP
 
-```bash
-SSL_CERT=/path/to/fullchain.pem SSL_KEY=/path/to/privkey.pem npm start
-```
+Capacitor 8 Android 工程支持 Android 7（API 24）及更高版本，内置网页界面、Opus
+资源和 Node.js TeamSpeak 运行时。
 
-### 作为 Linux 服务运行
+构建需要 Node.js 22+、JDK/Android Studio、Android SDK Platform 36，以及首次
+Gradle 构建时的互联网连接。
 
-完成生产构建后，新建 `/etc/systemd/system/teamspeak-web.service`，并按实际环境
-修改用户和路径：
-
-```ini
-[Unit]
-Description=TeamSpeak Web gateway
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-Type=simple
-User=teamspeak-web
-WorkingDirectory=/opt/TeamSpeakWeb
-Environment=NODE_ENV=production
-Environment=HOST=127.0.0.1
-Environment=PORT=3000
-ExecStart=/usr/bin/node /opt/TeamSpeakWeb/dist/src/index.js
-Restart=on-failure
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-```
-
-启用并启动服务：
+首次生成固定 release 签名，然后构建：
 
 ```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now teamspeak-web
-sudo systemctl status teamspeak-web
+npm run android:signing:init
+npm run android:apk
 ```
 
-### 分离部署前端和网关
+已签名 APK 位于 `artifacts/TeamSpeakWeb-release.apk`。请安全备份以下被 Git 忽略的
+文件，后续版本覆盖安装必须继续使用同一签名：
 
-`public/` 可以单独作为静态文件托管。访问前端时添加
-`?bridge=wss://gateway.example.com/ws`，或在加载 `public/js/main.js` 前定义
-`window.TSWEB_BRIDGE_URL`，即可指定独立网关。此时需要根据实际部署设置网关的
-反向代理和跨站访问策略。配置更简单的前后端同源部署仍是推荐方案。
+```text
+android/release-signing/teamspeakweb-release.jks
+android/keystore.properties
+```
 
-### 使用方式与本地数据
+开发版使用 `npm run android:apk:debug`；连接设备或模拟器使用
+`npm run android:run`；使用 Android Studio 打开工程则执行 `npm run android:open`。
 
-填写 TeamSpeak 服务器地址、昵称和可选密码后连接，并允许浏览器使用麦克风。
-麦克风按钮会在开启、按键说话和静音三种状态间循环；按键说话状态下可长按控件，
-桌面端也可以按住空格键。
+### GitHub 自动发布
 
-连接信息（包括服务器和频道密码）以及生成的 TeamSpeak 私有身份会以未加密形式
-保存在当前浏览器配置文件的 `localStorage` 中。不要在共享或不受信任的浏览器
-配置文件中使用敏感密码。清除站点数据会删除已保存身份，下次连接时会生成新的
-TeamSpeak 身份。
+推送与 `package.json` 版本一致的 `v*` Tag 会触发
+`.github/workflows/release.yml`，自动发布：
+
+- 带版本号和 `latest` 标签的 GHCR `linux/amd64` Docker 镜像。
+- GitHub Release 中的通用已签名 Android release APK 和 SHA-256 文件。
+
+Android 任务需要以下仓库 Secrets：
+
+```text
+ANDROID_KEYSTORE_BASE64
+ANDROID_KEYSTORE_PASSWORD
+ANDROID_KEY_ALIAS
+ANDROID_KEY_PASSWORD
+```
+
+所有 Android 版本必须持续复用同一份 keystore。
+
+### 本地数据与安全
+
+连接地址、密码、偏好设置和生成的 TeamSpeak 私有身份会以未加密形式保存在当前
+浏览器配置的 `localStorage` 中。请勿使用共享或不受信任的浏览器配置。清除网站
+数据会同时删除保存的身份。
 
 ### 常见问题
 
-#### 页面可以打开，但无法使用麦克风
+- **无法使用麦克风：** 除 `localhost` 外请使用 HTTPS，并检查浏览器网站权限。
+- **`send ENETUNREACH`：** 检查网关的出站 UDP 路由和防火墙，尝试直接填写 IPv4。
+- **`insufficient client permissions (id=2568)`：** 通常可使用标准欢迎数据；特殊
+  服务器可向连接组授予 `b_virtualserver_channel_list`、
+  `b_virtualserver_client_list` 和 `b_virtualserver_info_view`。
+- **反向代理后 WebSocket 失败：** 转发 `Upgrade` 与 `Connection`，上游使用
+  HTTP/1.1，HTTPS 页面应连接 `wss://`。
 
-除 `localhost` 外请使用 `https://` 访问，同时检查浏览器站点权限，确认麦克风
-没有被浏览器或系统策略禁用。
+### 开发
 
-#### `send ENETUNREACH`
+| 命令 | 用途 |
+| --- | --- |
+| `npm run dev` | 自动重启的开发服务 |
+| `npm test` | 构建并运行回归测试 |
+| `npm run typecheck` | 检查网页和 Android TypeScript |
+| `npm run build` | 编译 Node.js 网关 |
+| `npm run android:sync` | 打包并同步 Android 资源 |
+| `npm run android:apk` | 构建已签名 release APK |
 
-检查网关主机到 TeamSpeak 服务器的 UDP 路由和防火墙。网关会优先将域名连接
-解析为 IPv4，以避免双栈主机选择不可达的 IPv6 路由；显式 IPv4、方括号形式的
-IPv6 以及自定义端口仍然受支持。
-
-#### `insufficient client permissions (id=2568)`
-
-网关通常会从标准欢迎数据中建立频道、客户端和服务器状态。如果服务器经过深度
-定制并且也隐藏了这些数据，请为访客组或连接所用权限组授予
-`b_virtualserver_channel_list`、`b_virtualserver_client_list` 和
-`b_virtualserver_info_view`。
-
-#### 使用 Nginx 后 WebSocket 连接失败
-
-确认反向代理转发了 `Upgrade` 和 `Connection` 请求头，上游使用 HTTP/1.1，并
-设置了足够长的读取超时。HTTPS 页面必须连接 `wss://` 网关，不能连接 `ws://`。
-
-### 项目结构
+主要目录：
 
 ```text
-android/        Capacitor Android Studio 工程和原生清单
-mobile/         Android 事件传输层和内嵌 Node.js 入口
-public/         浏览器界面、音频管线和安装时生成的 Opus WASM 文件
-scripts/        依赖准备和 Android 打包脚本
-server/src/     HTTP/WebSocket 网关与 TeamSpeak 会话实现
-capacitor.config.ts  Android 应用标识和网页资源目录配置
-tsconfig.mobile.json 内嵌运行模块和原生传输层的类型检查配置
-dist/           编译后的服务端文件（自动生成且不提交到 Git）
-参考仓库/        本地参考源码（不提交到 Git）
+public/      浏览器界面与音频 Worker
+server/      TeamSpeak 网关和共享会话逻辑
+mobile/      Android 内嵌传输层
+android/     Capacitor Android 工程
+scripts/     构建与打包脚本
 ```
 
-### 开发命令
+当前限制：仅解码 TeamSpeak Opus 编码 ID 4 和 5；网页版语音依赖 WebAssembly 和
+Web Audio 支持。
 
-| 命令 | 说明 |
-| --- | --- |
-| `npm run dev` | 启动网关并在源码变化后自动重启 |
-| `npm start` | 直接运行一次 TypeScript 源码 |
-| `npm run typecheck` | 检查 TypeScript 类型但不生成文件 |
-| `npm run build` | 将网关编译到 `dist/` |
-| `npm run prepare:android` | 打包内嵌 TeamSpeak 运行模块和 Android 传输层 |
-| `npm run android:sync` | 构建移动端资源并同步到 Android 工程 |
-| `npm run android:run` | 同步后在选定的设备或模拟器中运行 |
-| `npm run android:signing:init` | 一次性生成固定的本地 release 签名身份 |
-| `npm run android:apk` | 在 `artifacts/` 中生成已签名 release APK |
-| `npm run android:apk:debug` | 生成使用 debug 签名的开发版 APK |
-| `npm run android:open` | 使用 Android Studio 打开原生工程 |
+## License / 许可证
 
-### 当前限制
-
-- 仅解码 TeamSpeak Opus 语音编码（编码 ID 4 和 5），忽略旧版 Speex/CELT 音频。
-- 语音功能依赖浏览器对 WebAssembly 和 Web Audio 的支持。
-- 网页版仍然需要 Node.js UDP 网关；只有 Android APK 内嵌 TeamSpeak 传输模块，
-  不需要该网关即可独立运行。
-
-### 许可证
-
-[MIT](LICENSE)。项目使用的 TeamSpeak 协议库是洁净室实现。
+[MIT](LICENSE)
